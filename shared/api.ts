@@ -32,6 +32,7 @@ export interface Share {
 export interface VersionSummary {
   id: number;
   version: number;
+  name: string | null;
   savedAt: string;
   savedBy: string;
 }

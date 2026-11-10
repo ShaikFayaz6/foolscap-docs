@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { VersionSummary } from '../../shared/api.ts';
 import { documentExtensions, type DocJson } from '../../shared/schema.ts';
@@ -17,12 +17,14 @@ function Preview({ content }: { content: DocJson }) {
 
 interface Props {
   documentId: string;
+  onName: (name: string) => Promise<VersionSummary[]>;
   onRestore: (versionId: number) => Promise<void>;
   onClose: () => void;
 }
 
-export function HistoryDialog({ documentId, onRestore, onClose }: Props) {
+export function HistoryDialog({ documentId, onName, onRestore, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [name, setName] = useState('');
   const [versions, setVersions] = useState<VersionSummary[] | null>(null);
   const [selected, setSelected] = useState<VersionSummary | null>(null);
   const [preview, setPreview] = useState<{ id: number; content: DocJson } | null>(null);
@@ -49,6 +51,22 @@ export function HistoryDialog({ documentId, onRestore, onClose }: Props) {
     );
   }, [documentId]);
 
+  async function saveNamed(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const list = await onName(name);
+      setVersions(list);
+      setName('');
+      if (list[0]) select(list[0]);
+    } catch (caught) {
+      setError((caught as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function restore() {
     if (!selected) return;
     setBusy(true);
@@ -64,6 +82,12 @@ export function HistoryDialog({ documentId, onRestore, onClose }: Props) {
   return (
     <dialog ref={dialog} className="dialog dialog-wide" aria-labelledby="history-heading" onCancel={onClose}>
       <h2 id="history-heading">Earlier versions</h2>
+      <form className="history-name" onSubmit={saveNamed}>
+        <input aria-label="Version name" value={name} maxLength={100} onChange={(e) => setName(e.target.value)} placeholder="Name the current version, e.g. Sent to legal" required />
+        <button className="button" type="submit" disabled={busy}>
+          Save version
+        </button>
+      </form>
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -82,8 +106,8 @@ export function HistoryDialog({ documentId, onRestore, onClose }: Props) {
             {versions.map((version) => (
               <li key={version.id}>
                 <button className="history-item" aria-pressed={selected?.id === version.id} onClick={() => select(version)}>
-                  <span>{timeAgo(version.savedAt)}</span>
-                  <small>{firstName(version.savedBy)}</small>
+                  <span className={version.name ? 'history-named' : undefined}>{version.name ?? timeAgo(version.savedAt)}</span>
+                  <small>{version.name ? timeAgo(version.savedAt) : firstName(version.savedBy)}</small>
                 </button>
               </li>
             ))}

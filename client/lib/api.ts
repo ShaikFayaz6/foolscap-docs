@@ -82,6 +82,8 @@ export const api = {
 
   listVersions: (id: string) =>
     request<{ versions: VersionSummary[] }>('GET', `/documents/${id}/versions`).then((r) => r.versions),
+  nameVersion: (id: string, name: string) =>
+    request<{ versions: VersionSummary[] }>('POST', `/documents/${id}/versions`, { name }).then((r) => r.versions),
   getVersion: (id: string, versionId: number) =>
     request<{ content: DocJson }>('GET', `/documents/${id}/versions/${versionId}`).then((r) => r.content),
   restoreVersion: (id: string, versionId: number, baseVersion: number) =>

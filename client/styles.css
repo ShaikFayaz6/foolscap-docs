@@ -125,6 +125,9 @@ label input, label select { color: var(--ink); font-size: 15px; font-weight: 400
 .share-controls select { padding: 4px 6px; font-size: 13px; }
 
 .dialog-wide { width: min(880px, calc(100vw - 32px)); }
+.history-name { display: flex; gap: 8px; margin-top: 12px; }
+.history-name input { flex: 1; min-width: 0; }
+.history-named { font-weight: 600; }
 .history-empty { margin-top: 12px; color: var(--ink-soft); }
 .history { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 14px; margin-top: 14px; }
 .history-list { max-height: 52vh; overflow-y: auto; }

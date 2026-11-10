@@ -212,6 +212,11 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
     else setConfirmLeave(true);
   }
 
+  async function nameVersion(name: string) {
+    if (!(await save.flush())) throw new Error('Your latest changes could not be saved, so no version was created.');
+    return api.nameVersion(initial.id, name);
+  }
+
   async function restoreVersion(versionId: number) {
     if (!(await save.flush())) throw new Error('Your latest changes could not be saved, so nothing was restored.');
     const restored = await api.restoreVersion(initial.id, versionId, save.currentVersion());
@@ -343,7 +348,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       </div>
 
       {historyOpen && (
-        <HistoryDialog documentId={document.id} onRestore={restoreVersion} onClose={() => setHistoryOpen(false)} />
+        <HistoryDialog documentId={document.id} onName={nameVersion} onRestore={restoreVersion} onClose={() => setHistoryOpen(false)} />
       )}
 
       {confirmLeave && (

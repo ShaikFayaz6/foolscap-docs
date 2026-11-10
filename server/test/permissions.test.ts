@@ -25,6 +25,7 @@ const ROUTES: [string, Role, Call][] = [
   ['list shares', 'owner', (c, f) => c.request('GET', `/api/documents/${f.id}/shares`)],
   ['grant share', 'owner', (c, f) => c.request('PUT', `/api/documents/${f.id}/shares`, { email: 'casey@foolscap.test', role: 'viewer' })],
   ['list versions', 'editor', (c, f) => c.request('GET', `/api/documents/${f.id}/versions`)],
+  ['name a version', 'editor', (c, f) => c.request('POST', `/api/documents/${f.id}/versions`, { name: 'Draft' })],
   ['read version', 'editor', (c, f) => c.request('GET', `/api/documents/${f.id}/versions/${f.versionId}`)],
   ['restore version', 'editor', (c, f) => c.request('POST', `/api/documents/${f.id}/versions/${f.versionId}/restore`, { baseVersion: f.version })],
 ];

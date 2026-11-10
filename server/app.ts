@@ -48,6 +48,7 @@ interface StoredContent {
 
 const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_SNAPSHOTS = 30;
+const MAX_NAMED_VERSIONS = 50;
 const EMPTY_SERIALIZED = JSON.stringify(EMPTY_DOC);
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
@@ -229,11 +230,11 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
   }
 
   /** Reads the stored document, refusing if it has moved on from the version the client edited. */
-  function readCurrent(id: string, baseVersion: number): StoredContent {
+  function readCurrent(id: string, baseVersion?: number): StoredContent {
     const current = db
       .prepare('SELECT content, version, updated_at, updated_by FROM documents WHERE id = ?')
       .get(id) as unknown as StoredContent;
-    if (current.version !== baseVersion) {
+    if (baseVersion !== undefined && current.version !== baseVersion) {
       throw new ApiError(409, 'version_conflict', 'Someone else saved a newer version of this document.', {
         currentVersion: current.version,
       });
@@ -257,17 +258,14 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
     return !last || Date.now() - Date.parse(last.saved_at) >= SNAPSHOT_INTERVAL_MS;
   }
 
-  function takeSnapshot(id: string, current: StoredContent): void {
-    db.prepare('INSERT INTO document_versions (document_id, version, content, saved_at, saved_by) VALUES (?, ?, ?, ?, ?)').run(
-      id,
-      current.version,
-      current.content,
-      current.updated_at,
-      current.updated_by,
-    );
+  function takeSnapshot(id: string, current: StoredContent, name: string | null = null): void {
     db.prepare(
-      `DELETE FROM document_versions WHERE document_id = ? AND id NOT IN
-       (SELECT id FROM document_versions WHERE document_id = ? ORDER BY id DESC LIMIT ?)`,
+      'INSERT INTO document_versions (document_id, version, content, saved_at, saved_by, name) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run(id, current.version, current.content, current.updated_at, current.updated_by, name);
+    // Only automatic checkpoints are pruned. A version someone named stays.
+    db.prepare(
+      `DELETE FROM document_versions WHERE document_id = ? AND name IS NULL AND id NOT IN
+       (SELECT id FROM document_versions WHERE document_id = ? AND name IS NULL ORDER BY id DESC LIMIT ?)`,
     ).run(id, id, MAX_SNAPSHOTS);
   }
 
@@ -357,14 +355,34 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
 
   // --- Version history ------------------------------------------------------
 
-  api.get('/documents/:id/versions', requireRole('editor'), (req, res) => {
-    const versions = db
+  const listVersions = (documentId: string) =>
+    db
       .prepare(
-        `SELECT v.id, v.version, v.saved_at AS savedAt, u.name AS savedBy FROM document_versions v
+        `SELECT v.id, v.version, v.name, v.saved_at AS savedAt, u.name AS savedBy FROM document_versions v
          JOIN users u ON u.id = v.saved_by WHERE v.document_id = ? ORDER BY v.id DESC`,
       )
-      .all(String(req.params.id));
-    res.json({ versions });
+      .all(documentId);
+
+  api.get('/documents/:id/versions', requireRole('editor'), (req, res) => {
+    res.json({ versions: listVersions(String(req.params.id)) });
+  });
+
+  api.post('/documents/:id/versions', requireRole('editor'), (req, res) => {
+    const { name } = parse(
+      z.object({ name: z.string().trim().min(1, 'Give this version a name.').max(100, 'Names can be at most 100 characters.') }),
+      req.body,
+    );
+    const id = String(req.params.id);
+    transaction(() => {
+      const { n } = db
+        .prepare('SELECT COUNT(*) n FROM document_versions WHERE document_id = ? AND name IS NOT NULL')
+        .get(id) as { n: number };
+      if (n >= MAX_NAMED_VERSIONS) {
+        throw new ApiError(409, 'too_many_named_versions', `A document can keep at most ${MAX_NAMED_VERSIONS} named versions.`);
+      }
+      takeSnapshot(id, readCurrent(id), name);
+    });
+    res.status(201).json({ versions: listVersions(id) });
   });
 
   api.get('/documents/:id/versions/:versionId', requireRole('editor'), (req, res) => {

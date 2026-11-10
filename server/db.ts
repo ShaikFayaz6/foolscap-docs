@@ -66,8 +66,10 @@ const COMMENTER_ROLE = `
   CREATE INDEX document_shares_user ON document_shares(user_id);
 `;
 
+const NAMED_VERSIONS = 'ALTER TABLE document_versions ADD COLUMN name TEXT;';
+
 /** Applied in order, once each. PRAGMA user_version records how many have run. Never edit a shipped entry. */
-export const MIGRATIONS = [SCHEMA, HISTORY_SCHEMA, COMMENTER_ROLE];
+export const MIGRATIONS = [SCHEMA, HISTORY_SCHEMA, COMMENTER_ROLE, NAMED_VERSIONS];
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16);

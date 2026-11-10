@@ -67,6 +67,26 @@ describe('version history', () => {
     assert.equal(textOf(undo.body.document.content), 'latest');
   });
 
+  it('keeps named versions when automatic checkpoints are pruned', async () => {
+    await save(h.avery, 'worth keeping');
+    const named = await h.avery.request('POST', `/api/documents/${id}/versions`, { name: 'Sent to legal' });
+    assert.equal(named.status, 201);
+    for (let index = 0; index < 34; index += 1) {
+      ageSnapshots();
+      await save(h.avery, `edit ${index}`);
+    }
+    const versions = await list();
+    assert.equal(versions.filter((v: { name: string | null }) => v.name === null).length, 30);
+    const kept = versions.find((v: { name: string | null }) => v.name === 'Sent to legal');
+    const { content } = (await h.avery.request('GET', `/api/documents/${id}/versions/${kept.id}`)).body;
+    assert.equal(textOf(content), 'worth keeping');
+  });
+
+  it('validates version names', async () => {
+    assert.equal((await h.avery.request('POST', `/api/documents/${id}/versions`, { name: '   ' })).status, 400);
+    assert.equal((await h.avery.request('POST', `/api/documents/${id}/versions`, { name: 'x'.repeat(101) })).status, 400);
+  });
+
   it('refuses a restore based on a stale version, changing nothing', async () => {
     await save(h.avery, 'one');
     await save(h.avery, 'two');
