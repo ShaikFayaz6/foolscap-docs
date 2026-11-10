@@ -115,6 +115,15 @@ fly volumes create foolscap_data --size 1 --region iad
 fly deploy --ha=false
 ```
 
+**Railway** (uses `railway.json` and the `Dockerfile`):
+
+1. New Project → Deploy from GitHub repo → pick this repo.
+2. Before the first deploy, add a **Volume** to the service mounted at `/data`. Without it, the database is erased on every redeploy.
+3. Under Networking, generate a public domain.
+4. Optionally set `DEMO_PASSWORD` under Variables. `PORT` is provided by Railway, and `DATABASE_PATH` and `TRUST_PROXY` come from the Docker image.
+
+A service with a volume runs as a single replica, which is what SQLite needs.
+
 **Render:** push the repo to GitHub, then create a Blueprint from `render.yaml`.
 
 **Any other Docker host:** build the image and mount a persistent volume at `/data`.
