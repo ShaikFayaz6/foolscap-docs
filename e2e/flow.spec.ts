@@ -196,7 +196,10 @@ test('create, format, share, import, conflict and restart', async ({ browser }) 
   });
 
   await test.step('imports .md and .docx, and rejects other types', async () => {
-    await avery.getByRole('button', { name: /Your pile/ }).click();
+    // The shared header is on the editor page too.
+    await expect(avery.locator('.masthead').getByText(/Avery/)).toBeVisible();
+    await expect(avery.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    await avery.getByRole('link', { name: 'Home', exact: true }).click();
     await expect(avery.getByText('.txt, .md or .docx, up to 2 MB', { exact: false }).first()).toBeVisible();
     const input = avery.getByTestId('import-input');
 
@@ -232,7 +235,7 @@ test('create, format, share, import, conflict and restart', async ({ browser }) 
       'word/document.xml',
       '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Word bold</w:t></w:r></w:p></w:body></w:document>',
     );
-    await avery.getByRole('button', { name: /Your pile/ }).click();
+    await avery.getByRole('link', { name: 'Home', exact: true }).click();
     await avery.getByTestId('import-input').setInputFiles({
       name: 'Brief.docx',
       mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

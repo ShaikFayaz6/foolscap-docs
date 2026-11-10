@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { DocumentSummary } from '../../shared/api.ts';
 import { IMPORT_EXTENSIONS, IMPORT_RULES_TEXT, MAX_UPLOAD_BYTES } from '../../shared/limits.ts';
 import { api, type ApiRequestError } from '../lib/api.ts';
-import { useAuth } from '../lib/auth.ts';
 import { firstName, timeAgo } from '../lib/format.ts';
+import { AppHeader } from '../components/AppHeader.tsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 
 type Filter = 'all' | 'mine' | 'shared';
@@ -21,7 +21,6 @@ function clientSideProblem(file: File): string | null {
 }
 
 export function LibraryPage() {
-  const { user, setUser } = useAuth();
   const navigate = useNavigate();
   const [documents, setDocuments] = useState<DocumentSummary[] | null>(null);
   const [loadError, setLoadError] = useState('');
@@ -87,11 +86,6 @@ export function LibraryPage() {
     }
   }
 
-  async function signOut() {
-    await api.logout().catch(() => {});
-    setUser(null);
-  }
-
   const visible = documents?.filter((d) => filter === 'all' || (filter === 'mine') === (d.role === 'owner')) ?? [];
   const counts = {
     all: documents?.length ?? 0,
@@ -111,15 +105,7 @@ export function LibraryPage() {
       }}
       onDrop={onDrop}
     >
-      <header className="masthead">
-        <span className="wordmark">Foolscap</span>
-        <div className="masthead-user">
-          <span>{user?.name}</span>
-          <button type="button" className="link-button" onClick={signOut}>
-            Sign out
-          </button>
-        </div>
-      </header>
+      <AppHeader />
 
       <main className="library-main">
         <div className="library-head">

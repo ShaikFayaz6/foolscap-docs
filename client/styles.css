@@ -66,7 +66,15 @@ label input, label select { color: var(--ink); font-size: 15px; font-weight: 400
 /* Library */
 .library { min-height: 100%; }
 .masthead { display: flex; justify-content: space-between; align-items: center; padding: 16px 28px; border-bottom: 1px solid var(--rule); }
-.masthead-user { display: flex; align-items: center; gap: 14px; font-size: 14px; }
+.masthead-user { display: flex; align-items: center; gap: 14px; font-size: 14px; min-width: 0; }
+.masthead-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.masthead-nav { display: flex; align-items: center; gap: 20px; }
+.masthead .wordmark { text-decoration: none; }
+.home-link { color: var(--ink-soft); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; }
+.home-link:hover { color: var(--accent); }
+.page-with-header { min-height: 100%; display: flex; flex-direction: column; }
+.page-with-header .center-state { flex: 1; }
+.editor-page .masthead { padding-top: 10px; padding-bottom: 10px; }
 .library-main { max-width: 880px; margin: 0 auto; padding: 44px 24px 80px; }
 .library-head { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; }
 .library-head h1 { font: 500 44px/1.05 var(--display); letter-spacing: -0.02em; }
@@ -141,8 +149,6 @@ label input, label select { color: var(--ink); font-size: 15px; font-weight: 400
 /* Editor */
 .editor-page { min-height: 100%; display: flex; flex-direction: column; }
 .editor-bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 16px; padding: 9px 24px; background: var(--desk); border-bottom: 1px solid var(--rule); }
-.back { background: none; border: 0; padding: 6px 2px; cursor: pointer; color: var(--ink-soft); font-size: 14px; white-space: nowrap; }
-.back:hover { color: var(--accent); }
 .title-input { flex: 1; min-width: 80px; background: transparent; border: 1px solid transparent; font: 500 22px/1.2 var(--display); letter-spacing: -0.01em; padding: 4px 8px; text-overflow: ellipsis; }
 .title-input:hover:not(:read-only), .title-input:focus { border-color: var(--rule); background: var(--pad); }
 .editor-bar-right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
@@ -257,5 +263,6 @@ label input, label select { color: var(--ink); font-size: 15px; font-weight: 400
 }
 
 @media (max-width: 760px) {
-  .editor-bar-right { flex-wrap: wrap; row-gap: 6px; }
+  .editor-bar-right { flex-wrap: wrap; row-gap: 6px; flex: 1 1 100%; min-width: 0; margin-left: 0; }
+  .masthead-nav { gap: 14px; }
 }

@@ -18,6 +18,7 @@ import { ToolRail } from '../components/ToolRail.tsx';
 import { ShareDialog } from '../components/ShareDialog.tsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 import { HistoryDialog } from '../components/HistoryDialog.tsx';
+import { AppHeader } from '../components/AppHeader.tsx';
 
 const POLL_MS = 8000;
 const LIVE_POLL_MS = 30_000;
@@ -41,10 +42,21 @@ export function EditorPage() {
 
   useEffect(fetchDocument, [fetchDocument]);
 
-  if (load.state === 'loading') return <div className="center-state" aria-busy="true">Finding that page…</div>;
+  if (load.state === 'loading') {
+    return (
+      <div className="page-with-header">
+        <AppHeader />
+        <div className="center-state" aria-busy="true">
+          Finding that page…
+        </div>
+      </div>
+    );
+  }
   if (load.state === 'failed') {
     return (
-      <main className="center-state">
+      <div className="page-with-header">
+        <AppHeader />
+        <main className="center-state">
         <h1>{load.notFound ? "This page isn't in your pile" : "This document didn't load"}</h1>
         <p>{load.message}</p>
         <p className="center-actions">
@@ -57,7 +69,8 @@ export function EditorPage() {
             Back to your pile
           </Link>
         </p>
-      </main>
+        </main>
+      </div>
     );
   }
   return <DocumentEditor key={load.document.id} initial={load.document} />;
@@ -85,7 +98,8 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
   const [title, setTitle] = useState(initial.title);
   const [titleError, setTitleError] = useState('');
   const [sharing, setSharing] = useState(false);
-  const [confirmLeave, setConfirmLeave] = useState(false);
+  // Where to go once the person agrees to leave with unsaved changes (home, or signing out).
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [threads, setThreads] = useState<CommentThread[] | null>(null);
   const [commentsError, setCommentsError] = useState('');
@@ -322,10 +336,10 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
     void saveTitle(value);
   }
 
-  async function leave() {
+  async function leave(go: () => void) {
     const saved = await save.flush();
-    if (saved || lostAccess || save.status === 'gone') navigate('/');
-    else setConfirmLeave(true);
+    if (saved || lostAccess || save.status === 'gone') go();
+    else setPendingLeave(() => go);
   }
 
   function startComment() {
@@ -396,10 +410,8 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
 
   return (
     <div className="editor-page">
+      <AppHeader guard={(go) => void leave(go)} />
       <header className="editor-bar">
-        <button type="button" className="back" onClick={leave}>
-          <span aria-hidden="true">←</span> Your pile
-        </button>
         <input
           className="title-input"
           aria-label="Document title"
@@ -559,14 +571,17 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
         <HistoryDialog documentId={document.id} onName={nameVersion} onRestore={restoreVersion} onClose={() => setHistoryOpen(false)} />
       )}
 
-      {confirmLeave && (
+      {pendingLeave && (
         <ConfirmDialog
           title="Leave without saving?"
           body="Your latest changes could not be saved and will be lost if you leave this page."
           cancelLabel="Stay here"
           confirmLabel="Leave anyway"
-          onConfirm={() => navigate('/')}
-          onCancel={() => setConfirmLeave(false)}
+          onConfirm={() => {
+            setPendingLeave(null);
+            pendingLeave();
+          }}
+          onCancel={() => setPendingLeave(null)}
         />
       )}
 
