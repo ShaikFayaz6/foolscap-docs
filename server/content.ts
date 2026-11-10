@@ -9,8 +9,8 @@ const MAX_DEPTH = 64;
 
 function assertDepth(value: unknown, depth = 0): void {
   if (depth > MAX_DEPTH) throw new Error('nested too deeply');
-  if (Array.isArray(value)) value.forEach((item) => assertDepth(item, depth + 1));
-  else if (value && typeof value === 'object') Object.values(value).forEach((item) => assertDepth(item, depth + 1));
+  const children = Array.isArray(value) ? value : value && typeof value === 'object' ? Object.values(value) : [];
+  for (const child of children) assertDepth(child, depth + 1);
 }
 
 /** The schema checks attribute names but not values, so the few that exist are checked here. */

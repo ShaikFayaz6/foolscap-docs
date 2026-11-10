@@ -92,15 +92,30 @@ export class PresenceHub implements LiveEvents {
 
   private upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
     const documentId = PATH.exec((request.url ?? '').split('?')[0]!)?.[1];
-    if (!documentId) return refuse(socket, 404, 'Not Found');
-    if (!sameOrigin(request)) return refuse(socket, 403, 'Forbidden');
+    if (!documentId) {
+      refuse(socket, 404, 'Not Found');
+      return;
+    }
+    if (!sameOrigin(request)) {
+      refuse(socket, 403, 'Forbidden');
+      return;
+    }
     const token = cookieValue(request.headers.cookie, SESSION_COOKIE);
     const user = userForToken(this.db, token);
-    if (!token || !user) return refuse(socket, 401, 'Unauthorized');
-    if (!roleFor(this.db, documentId, user.id)) return refuse(socket, 404, 'Not Found');
+    if (!token || !user) {
+      refuse(socket, 401, 'Unauthorized');
+      return;
+    }
+    if (!roleFor(this.db, documentId, user.id)) {
+      refuse(socket, 404, 'Not Found');
+      return;
+    }
     const room = this.rooms.get(documentId);
     const mine = [...(room ?? [])].filter((connection) => connection.userId === user.id).length;
-    if ((room?.size ?? 0) >= MAX_PER_DOCUMENT || mine >= MAX_PER_USER) return refuse(socket, 429, 'Too Many Requests');
+    if ((room?.size ?? 0) >= MAX_PER_DOCUMENT || mine >= MAX_PER_USER) {
+      refuse(socket, 429, 'Too Many Requests');
+      return;
+    }
 
     this.wss.handleUpgrade(request, socket, head, (ws) => {
       const connection: Connection = {

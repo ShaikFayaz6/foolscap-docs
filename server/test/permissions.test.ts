@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hasRole, type Role } from '../../shared/limits.ts';
 import { MIGRATIONS, openDatabase } from '../db.ts';
-import { BLAKE, Client, doc, startHarness, type Harness } from './helpers.ts';
+import { BLAKE, type Client, doc, startHarness, type Harness } from './helpers.ts';
 
 interface Fixture {
   id: string;

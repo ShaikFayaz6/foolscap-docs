@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { AppConfig, Share } from '../../shared/api.ts';
 import { ROLE_LABELS, type ShareRole } from '../../shared/limits.ts';
-import { api, ApiRequestError } from '../lib/api.ts';
+import { api, type ApiRequestError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.ts';
 
 const roleOptions = (['editor', 'commenter', 'viewer'] as const).map((value) => (
@@ -116,7 +116,7 @@ export function ShareDialog({ documentId, title, onClose }: Props) {
               >
                 {roleOptions}
               </select>
-              <button
+              <button type="button"
                 className="link-button"
                 disabled={busy}
                 aria-label={`Remove ${share.name}`}
@@ -130,7 +130,7 @@ export function ShareDialog({ documentId, title, onClose }: Props) {
       </ul>
 
       <div className="dialog-actions">
-        <button className="button" onClick={close}>
+        <button type="button" className="button" onClick={close}>
           Done
         </button>
       </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import type { AppConfig } from '../../shared/api.ts';
-import { api, ApiRequestError } from '../lib/api.ts';
+import { api, type ApiRequestError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.ts';
 
 export function LoginPage() {

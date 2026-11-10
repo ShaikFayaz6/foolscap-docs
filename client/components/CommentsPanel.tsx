@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import type { CommentThread } from '../../shared/api.ts';
 import type { Anchor } from '../../shared/anchors.ts';
 import { hasRole, type Role } from '../../shared/limits.ts';
-import { ApiRequestError } from '../lib/api.ts';
+import type { ApiRequestError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.ts';
 import { firstName, timeAgo } from '../lib/format.ts';
 
@@ -96,7 +96,7 @@ export function CommentsPanel(props: Props) {
     <aside className="comments-panel" aria-label="Comments">
       <header className="comments-head">
         <h2>Comments</h2>
-        <button className="link-button" onClick={onClose}>
+        <button type="button" className="link-button" onClick={onClose}>
           Close
         </button>
       </header>
@@ -132,7 +132,7 @@ export function CommentsPanel(props: Props) {
           const canDelete = role === 'owner' || (canComment && mine);
           return (
             <li key={thread.id} className={`thread ${thread.id === activeId ? 'is-active' : ''} ${thread.resolved ? 'is-resolved' : ''}`}>
-              <button className="thread-quote-button" onClick={() => onSelect(thread)}>
+              <button type="button" className="thread-quote-button" onClick={() => onSelect(thread)}>
                 <blockquote className="thread-quote">{thread.anchor.quote}</blockquote>
               </button>
               {thread.detached && <p className="thread-detached">The text this was about has changed.</p>}
@@ -152,12 +152,12 @@ export function CommentsPanel(props: Props) {
               {(canResolve || canDelete) && (
                 <div className="thread-actions">
                   {canResolve && (
-                    <button className="link-button" onClick={() => act(() => onResolve(thread.id, !thread.resolved))}>
+                    <button type="button" className="link-button" onClick={() => act(() => onResolve(thread.id, !thread.resolved))}>
                       {thread.resolved ? 'Reopen' : 'Resolve'}
                     </button>
                   )}
                   {canDelete && (
-                    <button className="link-button" onClick={() => act(() => onDelete(thread.id))}>
+                    <button type="button" className="link-button" onClick={() => act(() => onDelete(thread.id))}>
                       Delete
                     </button>
                   )}
@@ -169,7 +169,7 @@ export function CommentsPanel(props: Props) {
       </ul>
 
       {resolvedCount > 0 && (
-        <button className="link-button" onClick={() => setShowResolved((current) => !current)}>
+        <button type="button" className="link-button" onClick={() => setShowResolved((current) => !current)}>
           {showResolved ? 'Hide' : 'Show'} resolved ({resolvedCount})
         </button>
       )}

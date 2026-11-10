@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, ApiRequestError } from './api.ts';
+import { api, type ApiRequestError } from './api.ts';
 
 export type SaveStatus =
   | 'saved'

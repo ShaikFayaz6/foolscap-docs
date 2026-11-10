@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom';
 import type { DocumentSummary } from '../../shared/api.ts';
 import { IMPORT_EXTENSIONS, IMPORT_RULES_TEXT, MAX_UPLOAD_BYTES } from '../../shared/limits.ts';
-import { api, ApiRequestError } from '../lib/api.ts';
+import { api, type ApiRequestError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.ts';
 import { firstName, timeAgo } from '../lib/format.ts';
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
@@ -115,7 +115,7 @@ export function LibraryPage() {
         <span className="wordmark">Foolscap</span>
         <div className="masthead-user">
           <span>{user?.name}</span>
-          <button className="link-button" onClick={signOut}>
+          <button type="button" className="link-button" onClick={signOut}>
             Sign out
           </button>
         </div>
@@ -125,10 +125,10 @@ export function LibraryPage() {
         <div className="library-head">
           <h1>Your pile</h1>
           <div className="library-actions">
-            <button className="button button-primary" onClick={createDocument} disabled={busy !== null}>
+            <button type="button" className="button button-primary" onClick={createDocument} disabled={busy !== null}>
               {busy === 'create' ? 'Creating…' : 'New document'}
             </button>
-            <button className="button" onClick={() => fileInput.current?.click()} disabled={busy !== null}>
+            <button type="button" className="button" onClick={() => fileInput.current?.click()} disabled={busy !== null}>
               {busy === 'import' ? 'Importing…' : 'Import a file'}
             </button>
             <input
@@ -150,7 +150,7 @@ export function LibraryPage() {
         {actionError && (
           <div className="notice notice-error" role="alert">
             <p>{actionError}</p>
-            <button className="link-button" onClick={() => setActionError('')}>
+            <button type="button" className="link-button" onClick={() => setActionError('')}>
               Dismiss
             </button>
           </div>
@@ -164,7 +164,7 @@ export function LibraryPage() {
               ['shared', 'Shared with you'],
             ] as const
           ).map(([value, label]) => (
-            <button key={value} className="filter" aria-pressed={filter === value} onClick={() => setFilter(value)}>
+            <button type="button" key={value} className="filter" aria-pressed={filter === value} onClick={() => setFilter(value)}>
               {label} <span className="filter-count">{counts[value]}</span>
             </button>
           ))}
@@ -174,7 +174,7 @@ export function LibraryPage() {
           <div className="empty" role="alert">
             <h2>Your documents didn't load</h2>
             <p>{loadError}</p>
-            <button className="button" onClick={load}>
+            <button type="button" className="button" onClick={load}>
               Try again
             </button>
           </div>
@@ -225,7 +225,7 @@ export function LibraryPage() {
                 </span>
                 <span className="doc-actions">
                   {document.role === 'owner' && (
-                    <button className="link-button" aria-label={`Delete ${document.title}`} onClick={() => setPendingDelete(document)}>
+                    <button type="button" className="link-button" aria-label={`Delete ${document.title}`} onClick={() => setPendingDelete(document)}>
                       Delete
                     </button>
                   )}

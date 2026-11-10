@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import type { VersionSummary } from '../../shared/api.ts';
 import { documentExtensions, type DocJson } from '../../shared/schema.ts';
-import { api, ApiRequestError } from '../lib/api.ts';
+import { api, type ApiRequestError } from '../lib/api.ts';
 import { firstName, timeAgo } from '../lib/format.ts';
 
 function Preview({ content }: { content: DocJson }) {
@@ -105,7 +105,7 @@ export function HistoryDialog({ documentId, onName, onRestore, onClose }: Props)
           <ul className="history-list">
             {versions.map((version) => (
               <li key={version.id}>
-                <button className="history-item" aria-pressed={selected?.id === version.id} onClick={() => select(version)}>
+                <button type="button" className="history-item" aria-pressed={selected?.id === version.id} onClick={() => select(version)}>
                   <span className={version.name ? 'history-named' : undefined}>{version.name ?? timeAgo(version.savedAt)}</span>
                   <small>{version.name ? timeAgo(version.savedAt) : firstName(version.savedBy)}</small>
                 </button>
@@ -117,11 +117,11 @@ export function HistoryDialog({ documentId, onName, onRestore, onClose }: Props)
       )}
 
       <div className="dialog-actions">
-        <button className="button" onClick={onClose}>
+        <button type="button" className="button" onClick={onClose}>
           Close
         </button>
         {selected && (
-          <button className="button button-primary" disabled={busy || !preview} onClick={restore}>
+          <button type="button" className="button button-primary" disabled={busy || !preview} onClick={restore}>
             {busy ? 'Restoring…' : 'Restore this version'}
           </button>
         )}

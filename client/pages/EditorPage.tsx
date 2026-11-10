@@ -11,7 +11,7 @@ import { otherPeople, peerColor, PeopleHere } from '../components/PeopleHere.tsx
 import { CommentsPanel, type PlacedThread } from '../components/CommentsPanel.tsx';
 import { documentExtensions } from '../../shared/schema.ts';
 import { hasRole, MAX_TITLE_LENGTH, ROLE_LABELS, type ShareRole } from '../../shared/limits.ts';
-import { api, ApiRequestError } from '../lib/api.ts';
+import { api, type ApiRequestError } from '../lib/api.ts';
 import { clockTime, firstName } from '../lib/format.ts';
 import { useAutosave, type SaveStatus } from '../lib/useAutosave.ts';
 import { ToolRail } from '../components/ToolRail.tsx';
@@ -49,7 +49,7 @@ export function EditorPage() {
         <p>{load.message}</p>
         <p className="center-actions">
           {!load.notFound && (
-            <button className="button" onClick={fetchDocument}>
+            <button type="button" className="button" onClick={fetchDocument}>
               Try again
             </button>
           )}
@@ -397,7 +397,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
   return (
     <div className="editor-page">
       <header className="editor-bar">
-        <button className="back" onClick={leave}>
+        <button type="button" className="back" onClick={leave}>
           <span aria-hidden="true">←</span> Your pile
         </button>
         <input
@@ -425,11 +425,11 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
               {statusLabel(save.status, save.savedAt)}
             </span>
           )}
-          <button className="link-button" aria-expanded={commentsOpen} onClick={() => setCommentsOpen((open) => !open)}>
+          <button type="button" className="link-button" aria-expanded={commentsOpen} onClick={() => setCommentsOpen((open) => !open)}>
             Comments{openThreadCount > 0 ? ` · ${openThreadCount}` : ''}
           </button>
           {canEdit && (
-            <button className="link-button" onClick={() => setHistoryOpen(true)}>
+            <button type="button" className="link-button" onClick={() => setHistoryOpen(true)}>
               History
             </button>
           )}
@@ -442,7 +442,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
                   ['pdf', 'PDF (.pdf)'],
                 ] as const
               ).map(([format, label]) => (
-                <button
+                <button type="button"
                   key={format}
                   className="link-button"
                   onClick={() => {
@@ -458,7 +458,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
           {isOwner ? (
             <>
               <span className="tag tag-owned">Yours</span>
-              <button className="button button-primary" onClick={() => setSharing(true)}>
+              <button type="button" className="button button-primary" onClick={() => setSharing(true)}>
                 Share{document.shareCount > 0 ? ` · ${document.shareCount}` : ''}
               </button>
             </>
@@ -475,10 +475,10 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
           <p>{banner.text}</p>
           {save.status === 'conflict' && !lostAccess && (
             <span className="notice-actions">
-              <button className="button" onClick={loadLatest}>
+              <button type="button" className="button" onClick={loadLatest}>
                 Load their version
               </button>
-              <button className="button" onClick={keepMine}>
+              <button type="button" className="button" onClick={keepMine}>
                 Replace with mine
               </button>
             </span>
@@ -498,7 +498,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       {exportError && (
         <div className="notice notice-error notice-bar" role="alert">
           <p>The export failed. {exportError}</p>
-          <button className="link-button" onClick={() => setExportError('')}>
+          <button type="button" className="link-button" onClick={() => setExportError('')}>
             Dismiss
           </button>
         </div>
@@ -506,7 +506,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       {remoteNote && (
         <div className="notice notice-bar">
           <p>{remoteNote}</p>
-          <button className="link-button" onClick={() => setRemoteNote('')}>
+          <button type="button" className="link-button" onClick={() => setRemoteNote('')}>
             Dismiss
           </button>
         </div>
@@ -516,7 +516,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
           <p>
             Imported from {importNotice.importedFrom}. {importNotice.notes?.join(' ')}
           </p>
-          <button className="link-button" onClick={() => setImportNotice(null)}>
+          <button type="button" className="link-button" onClick={() => setImportNotice(null)}>
             Dismiss
           </button>
         </div>

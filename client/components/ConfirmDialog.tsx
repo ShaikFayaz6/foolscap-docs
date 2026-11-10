@@ -20,10 +20,10 @@ export function ConfirmDialog({ title, body, confirmLabel, cancelLabel = 'Keep i
       <h2>{title}</h2>
       <p>{body}</p>
       <div className="dialog-actions">
-        <button className="button" onClick={onCancel}>
+        <button type="button" className="button" onClick={onCancel}>
           {cancelLabel}
         </button>
-        <button className="button button-danger" onClick={onConfirm}>
+        <button type="button" className="button button-danger" onClick={onConfirm}>
           {confirmLabel}
         </button>
       </div>
