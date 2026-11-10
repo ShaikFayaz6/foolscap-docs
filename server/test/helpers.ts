@@ -1,9 +1,9 @@
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
-import { createApp } from '../app.ts';
+import { createApp, type AppOptions } from '../app.ts';
 import { openDatabase, type Db } from '../db.ts';
 import { PresenceHub } from '../presence.ts';
-import { DEMO_PASSWORD } from '../../shared/demo.ts';
+import { DEFAULT_DEMO_PASSWORD as DEMO_PASSWORD } from '../config.ts';
 
 export const AVERY = 'avery@foolscap.test';
 export const BLAKE = 'blake@foolscap.test';
@@ -28,6 +28,7 @@ export class Client {
     const response = await fetch(this.base + path, {
       method,
       headers: {
+        'x-requested-with': 'foolscap',
         ...(this.cookie ? { cookie: this.cookie } : {}),
         ...(body !== undefined && !isForm ? { 'content-type': 'application/json' } : {}),
       },
@@ -75,16 +76,24 @@ export interface Harness {
   close(): Promise<void>;
 }
 
-export async function startHarness(options: { heartbeatMs?: number } = {}): Promise<Harness> {
+const NO_PRACTICAL_LIMIT = { limit: 100_000, windowMs: 60_000 };
+
+export async function startHarness(options: { heartbeatMs?: number; app?: AppOptions } = {}): Promise<Harness> {
   const db = openDatabase(':memory:', { seedWelcomeDoc: false });
   const hub = new PresenceHub(db, options);
   const server = await new Promise<Server>((resolve) => {
-    const listening = createApp(db, { live: hub }).listen(0, () => resolve(listening));
+    const listening = createApp(db, {
+      live: hub,
+      ...options.app,
+      rateLimits: { login: NO_PRACTICAL_LIMIT, upload: NO_PRACTICAL_LIMIT, export: NO_PRACTICAL_LIMIT, ...options.app?.rateLimits },
+    }).listen(0, () => resolve(listening));
   });
   hub.attach(server);
   const base =`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const [avery, blake, casey] = [new Client(base), new Client(base), new Client(base)] as const;
-  await Promise.all([avery.login(AVERY), blake.login(BLAKE), casey.login(CASEY)]);
+  await avery.login(AVERY);
+  await blake.login(BLAKE);
+  await casey.login(CASEY);
   return {
     db,
     server,

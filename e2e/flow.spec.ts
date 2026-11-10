@@ -6,6 +6,7 @@ import JSZip from 'jszip';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 
 const PORT = 4179;
+const CSRF = { 'x-requested-with': 'foolscap' };
 const dataDir = mkdtempSync(join(tmpdir(), 'foolscap-e2e-'));
 let server: ChildProcess | undefined;
 
@@ -140,7 +141,7 @@ test('create, format, share, import, conflict and restart', async ({ browser }) 
     expect((await (await blake.request.get(`/api/documents/${documentId}`)).json()).document.version).toBe(versionBefore);
 
     const attempt = await blake.request.put(`/api/documents/${documentId}/content`, {
-      data: { content: { type: 'doc', content: [{ type: 'paragraph' }] }, baseVersion: 1 },
+      headers: CSRF, data: { content: { type: 'doc', content: [{ type: 'paragraph' }] }, baseVersion: 1 },
     });
     expect(attempt.status()).toBe(403);
   });
@@ -169,7 +170,7 @@ test('create, format, share, import, conflict and restart', async ({ browser }) 
 
     const current = await (await blake.request.get(`/api/documents/${documentId}`)).json();
     const saved = await blake.request.put(`/api/documents/${documentId}/content`, {
-      data: { content: current.document.content, baseVersion: current.document.version },
+      headers: CSRF, data: { content: current.document.content, baseVersion: current.document.version },
     });
     expect(saved.status()).toBe(200);
     await expect(avery.getByText('Someone saved a newer version')).toBeVisible();
@@ -270,7 +271,7 @@ test('comments: anchored threads, replies and resolve across two users and roles
   await expectSaved(owner);
 
   const share = async (role: string) => {
-    const response = await owner.request.put(`/api/documents/${documentId}/shares`, { data: { email: 'blake@foolscap.test', role } });
+    const response = await owner.request.put(`/api/documents/${documentId}/shares`, { headers: CSRF, data: { email: 'blake@foolscap.test', role } });
     expect(response.status()).toBe(200);
   };
   await share('commenter');
@@ -364,7 +365,7 @@ test('presence: shows who is here, live updates, and recovers after the server r
   await editorOf(avery).click();
   await avery.keyboard.type('Shared words');
   await expectSaved(avery);
-  await avery.request.put(`/api/documents/${id}/shares`, { data: { email: 'blake@foolscap.test', role: 'editor' } });
+  await avery.request.put(`/api/documents/${id}/shares`, { headers: CSRF, data: { email: 'blake@foolscap.test', role: 'editor' } });
 
   const blakeIsHere = avery.getByRole('status', { name: /Also here: Blake/ });
   await expect(blakeIsHere).toHaveCount(0);
@@ -387,7 +388,7 @@ test('presence: shows who is here, live updates, and recovers after the server r
   });
 
   await test.step('a role change reaches the open page at once', async () => {
-    await avery.request.put(`/api/documents/${id}/shares`, { data: { email: 'blake@foolscap.test', role: 'viewer' } });
+    await avery.request.put(`/api/documents/${id}/shares`, { headers: CSRF, data: { email: 'blake@foolscap.test', role: 'viewer' } });
     await expect(editorOf(blake)).toHaveAttribute('contenteditable', 'false', { timeout: 4000 });
   });
 
@@ -431,7 +432,7 @@ test('pasted and stored markup stays inert', async ({ browser }) => {
 
   const payload = '<img src=x onerror="window.__xss=5">';
   const put = await page.request.put(`/api/documents/${documentId}/content`, {
-    data: { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: payload }] }] }, baseVersion: saved.version },
+    headers: CSRF, data: { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: payload }] }] }, baseVersion: saved.version },
   });
   expect(put.status()).toBe(200);
   await page.reload();

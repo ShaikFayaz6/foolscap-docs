@@ -38,6 +38,10 @@ export interface VersionSummary {
   savedBy: string;
 }
 
+export interface AppConfig {
+  demo: { password: string; accounts: { email: string; name: string }[] } | null;
+}
+
 export interface LivePeer {
   id: string;
   userId: string;

@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../../shared/demo.ts';
+import type { AppConfig } from '../../shared/api.ts';
 import { api, ApiRequestError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.ts';
 
@@ -12,6 +12,15 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [demo, setDemo] = useState<AppConfig['demo']>(null);
+
+  useEffect(() => {
+    api.config().then(
+      (config) => setDemo(config.demo),
+      () => setDemo(null),
+    );
+  }, []);
+
   const destination = (location.state as { from?: string } | null)?.from ?? '/';
 
   if (user) return <Navigate to={destination} replace />;
@@ -65,15 +74,16 @@ export function LoginPage() {
             {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+        {demo && (
         <div className="demo-accounts">
           <h2>Demo accounts</h2>
           <p>
-            All use the password <code>{DEMO_PASSWORD}</code>. Open a second window to try sharing between people.
+            All use the password <code>{demo.password}</code>. Open a second window to try sharing between people.
           </p>
           <ul>
-            {DEMO_ACCOUNTS.map((account) => (
+            {demo.accounts.map((account) => (
               <li key={account.email}>
-                <button className="demo-account" type="button" disabled={busy} onClick={() => signIn(account.email, DEMO_PASSWORD)}>
+                <button className="demo-account" type="button" disabled={busy} onClick={() => signIn(account.email, demo.password)}>
                   <span>{account.name}</span>
                   <small>{account.email}</small>
                 </button>
@@ -81,6 +91,7 @@ export function LoginPage() {
             ))}
           </ul>
         </div>
+        )}
       </section>
     </main>
   );

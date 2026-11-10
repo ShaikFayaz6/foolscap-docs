@@ -1,6 +1,7 @@
 import type { Anchor } from '../../shared/anchors.ts';
 import type {
   ApiErrorBody,
+  AppConfig,
   CommentThread,
   DocumentDetail,
   DocumentSummary,
@@ -36,7 +37,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     response = await fetch(`/api${path}`, {
       method,
       credentials: 'same-origin',
-      headers: body === undefined || isForm ? undefined : { 'content-type': 'application/json' },
+      headers: { 'x-requested-with': 'foolscap', ...(body === undefined || isForm ? {} : { 'content-type': 'application/json' }) },
       body: isForm ? body : body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -63,6 +64,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 }
 
 export const api = {
+  config: () => request<AppConfig>('GET', '/config'),
   me: () => request<{ user: User }>('GET', '/auth/me').then((r) => r.user),
   login: (email: string, password: string) =>
     request<{ user: User }>('POST', '/auth/login', { email, password }).then((r) => r.user),

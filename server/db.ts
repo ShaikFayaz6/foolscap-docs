@@ -2,7 +2,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../shared/demo.ts';
+import { DEFAULT_DEMO_PASSWORD } from './config.ts';
+import { DEMO_ACCOUNTS } from './demo.ts';
 
 export type Db = DatabaseSync;
 
@@ -131,7 +132,13 @@ const WELCOME_DOC = {
   ],
 };
 
-export function openDatabase(path: string, options: { seedWelcomeDoc?: boolean } = {}): Db {
+interface OpenOptions {
+  seedWelcomeDoc?: boolean;
+  seedDemoAccounts?: boolean;
+  demoPassword?: string;
+}
+
+export function openDatabase(path: string, options: OpenOptions = {}): Db {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;');
@@ -140,13 +147,15 @@ export function openDatabase(path: string, options: { seedWelcomeDoc?: boolean }
   for (let index = schemaVersion; index < MIGRATIONS.length; index += 1) {
     db.exec(`BEGIN; ${MIGRATIONS[index]} PRAGMA user_version = ${index + 1}; COMMIT;`);
   }
-  if (schemaVersion === 0) seed(db, options.seedWelcomeDoc ?? true);
+  if (schemaVersion === 0 && (options.seedDemoAccounts ?? true)) {
+    seed(db, options.seedWelcomeDoc ?? true, options.demoPassword ?? DEFAULT_DEMO_PASSWORD);
+  }
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
   return db;
 }
 
-function seed(db: Db, withWelcomeDoc: boolean): void {
-  const passwordHash = hashPassword(DEMO_PASSWORD);
+function seed(db: Db, withWelcomeDoc: boolean, password: string): void {
+  const passwordHash = hashPassword(password);
   const insert = db.prepare('INSERT INTO users (id, email, name, password_hash) VALUES (?, ?, ?, ?)');
   const ids = DEMO_ACCOUNTS.map((account) => {
     const id = randomUUID();

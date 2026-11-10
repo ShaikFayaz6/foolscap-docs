@@ -5,8 +5,10 @@ import express, { type NextFunction, type Request, type RequestHandler, type Res
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import multer from 'multer';
+import { rateLimit, type Options as RateLimitOptions } from 'express-rate-limit';
+import pino, { type Logger } from 'pino';
 import { z } from 'zod';
-import { verifyPassword, type Db } from './db.ts';
+import { hashPassword, verifyPassword, type Db } from './db.ts';
 import { hashToken, roleFor, SESSION_COOKIE, userForToken } from './access.ts';
 import { NO_LIVE_EVENTS, type LiveEvents } from './presence.ts';
 import { ApiError } from './errors.ts';
@@ -24,7 +26,7 @@ import {
 } from '../shared/limits.ts';
 import { EMPTY_DOC } from '../shared/schema.ts';
 import { MAX_QUOTE_LENGTH } from '../shared/anchors.ts';
-import type { CommentThread, DocumentDetail, DocumentSummary, Share, User } from '../shared/api.ts';
+import type { AppConfig, CommentThread, DocumentDetail, DocumentSummary, Share, User } from '../shared/api.ts';
 
 const SESSION_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -111,21 +113,87 @@ function toSummary(row: DocumentRow, userId: string): DocumentSummary {
   };
 }
 
-export function createApp(db: Db, options: { staticDir?: string; live?: LiveEvents } = {}) {
+const MINUTE = 60_000;
+const DEFAULT_RATE_LIMITS = {
+  // Only failed logins count, so a reviewer signing in repeatedly is never locked out.
+  login: { limit: 20, windowMs: 15 * MINUTE },
+  upload: { limit: 30, windowMs: 10 * MINUTE },
+  export: { limit: 60, windowMs: MINUTE },
+};
+
+export interface AppOptions {
+  staticDir?: string;
+  live?: LiveEvents;
+  logger?: Logger;
+  trustProxy?: number;
+  isProduction?: boolean;
+  demo?: AppConfig['demo'];
+  rateLimits?: Partial<typeof DEFAULT_RATE_LIMITS>;
+}
+
+export function createApp(db: Db, options: AppOptions = {}) {
   const live = options.live ?? NO_LIVE_EVENTS;
+  const logger = options.logger ?? pino({ level: 'silent' });
+  const limits = { ...DEFAULT_RATE_LIMITS, ...options.rateLimits };
+  const unknownUserHash = hashPassword(randomBytes(16).toString('hex'));
   const app = express();
-  app.set('trust proxy', 1);
+  app.set('trust proxy', options.trustProxy ?? 0);
   app.disable('x-powered-by');
   app.use(
     helmet({
       contentSecurityPolicy: { directives: { upgradeInsecureRequests: null } },
-      strictTransportSecurity: false,
+      strictTransportSecurity: options.isProduction ? { maxAge: 15_552_000 } : false,
     }),
   );
   app.use(cookieParser());
 
+  // One structured line per request. Paths and ids only: never bodies, cookies or document text.
+  app.use('/api', (req, res, next) => {
+    const started = performance.now();
+    res.locals.requestId = randomUUID();
+    res.setHeader('X-Request-Id', res.locals.requestId);
+    res.on('finish', () => {
+      const level = res.statusCode >= 500 ? 'error' : req.path === '/health' ? 'debug' : 'info';
+      logger[level]({
+        requestId: res.locals.requestId,
+        method: req.method,
+        path: req.originalUrl.split('?')[0],
+        status: res.statusCode,
+        ms: Math.round(performance.now() - started),
+        userId: (res.locals.user as User | undefined)?.id,
+      }, 'request');
+    });
+    next();
+  });
+
   const api = express.Router();
+
+  // Cross-site forms cannot set a custom header, and browsers name the real origin.
+  api.use((req, _res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    const origin = req.get('origin');
+    let allowed = req.get('x-requested-with') === 'foolscap';
+    if (allowed && origin) {
+      try {
+        allowed = new URL(origin).host === req.get('host');
+      } catch {
+        allowed = false;
+      }
+    }
+    if (!allowed) throw new ApiError(403, 'csrf_rejected', 'This request was blocked because it did not come from Foolscap. Reload the page and try again.');
+    next();
+  });
   api.use(express.json({ limit: '6mb' }));
+
+  const limiter = (rule: { limit: number; windowMs: number }, extra: Partial<RateLimitOptions> = {}) =>
+    rateLimit({
+      ...rule,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+      handler: (_req, _res, next) => next(new ApiError(429, 'rate_limited', 'Too many attempts. Please wait a few minutes and try again.')),
+      ...extra,
+    });
+  const perUser = { keyGenerator: (_req: Request, res: Response) => currentUser(res).id };
 
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -134,8 +202,18 @@ export function createApp(db: Db, options: { staticDir?: string; live?: LiveEven
   });
 
   api.get('/health', (_req, res) => {
-    db.prepare('SELECT 1').get();
-    res.json({ ok: true });
+    try {
+      db.prepare('SELECT 1').get();
+      res.json({ ok: true, database: 'up', uptimeSeconds: Math.round(process.uptime()) });
+    } catch (error) {
+      logger.error({ err: error }, 'Health check failed');
+      res.status(503).json({ ok: false, database: 'down' });
+    }
+  });
+
+  api.get('/config', (_req, res) => {
+    const config: AppConfig = { demo: options.demo ?? null };
+    res.json(config);
   });
 
   // --- Authentication -------------------------------------------------------
@@ -147,17 +225,20 @@ export function createApp(db: Db, options: { staticDir?: string; live?: LiveEven
     next();
   };
 
-  api.post('/auth/login', (req, res) => {
+  api.post('/auth/login', limiter(limits.login, { skipSuccessfulRequests: true }), (req, res) => {
     const { email, password } = parse(
-      z.object({ email: z.string().trim().min(1), password: z.string().min(1) }),
+      z.object({ email: z.string().trim().min(1).max(254), password: z.string().min(1).max(200) }),
       req.body,
     );
     const row = db.prepare('SELECT id, email, name, password_hash FROM users WHERE email = ?').get(email) as
       | (User & { password_hash: string })
       | undefined;
-    if (!row || !verifyPassword(password, row.password_hash)) {
+    // Hashes even for unknown emails, so response time does not reveal who has an account.
+    const passwordMatches = verifyPassword(password, row?.password_hash ?? unknownUserHash);
+    if (!row || !passwordMatches) {
       throw new ApiError(401, 'invalid_credentials', 'That email and password do not match an account.');
     }
+    db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
     const token = randomBytes(32).toString('hex');
     db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(
       hashToken(token),
@@ -310,7 +391,7 @@ export function createApp(db: Db, options: { staticDir?: string; live?: LiveEven
     res.status(201).json({ document: loadDetail(id, userId) });
   });
 
-  api.post('/documents/import', (req, res, next) => {
+  api.post('/documents/import', limiter(limits.upload, perUser), (req, res, next) => {
     upload.single('file')(req, res, (error: unknown) => {
       if (error instanceof multer.MulterError) {
         next(
@@ -368,7 +449,7 @@ export function createApp(db: Db, options: { staticDir?: string; live?: LiveEven
 
   // --- Export ---------------------------------------------------------------
 
-  api.get('/documents/:id/export', requireRole('viewer'), async (req, res) => {
+  api.get('/documents/:id/export', requireRole('viewer'), limiter(limits.export, perUser), async (req, res) => {
     const { format } = parse(z.object({ format: z.enum(['markdown', 'pdf'], 'Choose markdown or pdf.') }), req.query);
     const row = db.prepare('SELECT title, content FROM documents WHERE id = ?').get(String(req.params.id)) as {
       title: string;
@@ -620,7 +701,7 @@ export function createApp(db: Db, options: { staticDir?: string; live?: LiveEven
     } else if (status === 400) {
       res.status(400).json({ error: { code: 'invalid_request', message: 'That request could not be read.' } });
     } else {
-      console.error(error);
+      logger.error({ err: error, requestId: res.locals.requestId }, 'Unhandled error');
       res.status(500).json({ error: { code: 'server_error', message: 'Something went wrong on the server.' } });
     }
   });

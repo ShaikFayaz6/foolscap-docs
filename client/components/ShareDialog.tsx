@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import type { Share } from '../../shared/api.ts';
-import { DEMO_ACCOUNTS } from '../../shared/demo.ts';
+import type { AppConfig, Share } from '../../shared/api.ts';
 import { ROLE_LABELS, type ShareRole } from '../../shared/limits.ts';
 import { api, ApiRequestError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.ts';
@@ -25,10 +24,12 @@ export function ShareDialog({ documentId, title, onClose }: Props) {
   const [role, setRole] = useState<ShareRole>('editor');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [demoAccounts, setDemoAccounts] = useState<NonNullable<AppConfig['demo']>['accounts']>([]);
 
   useEffect(() => {
     if (!dialog.current?.open) dialog.current?.showModal();
     api.listShares(documentId).then(setShares, (e: ApiRequestError) => setError(e.message));
+    api.config().then((config) => setDemoAccounts(config.demo?.accounts ?? []), () => {});
   }, [documentId]);
 
   async function run(action: () => Promise<Share[]>): Promise<boolean> {
@@ -51,7 +52,7 @@ export function ShareDialog({ documentId, title, onClose }: Props) {
   }
 
   const close = () => onClose(shares?.length ?? null);
-  const suggestions = DEMO_ACCOUNTS.filter(
+  const suggestions = demoAccounts.filter(
     (account) => account.email !== user?.email && !shares?.some((share) => share.email === account.email),
   );
 
