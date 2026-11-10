@@ -2,114 +2,138 @@
 
 ## Shape
 
-One Node process serves a JSON API, a WebSocket endpoint and the built React app. One SQLite file holds everything.
+One Node process serves the JSON API, the WebSocket endpoint and the built React app. One SQLite file holds everything.
 
 ```
-client/   React + TipTap: library, editor, autosave, comments, history, presence
+client/   React + TipTap: documents page, editor, autosave, comments, history, presence
 shared/   document schema, limits, comment anchors, API types (used by both sides)
 server/   Express API, access control, import, export, presence hub, SQLite migrations
-e2e/      Playwright flows across several users and server restarts
+e2e/      Playwright flows with several users and server restarts
+samples/  test files for import, and a testing script for three people
 ```
 
-## What was prioritized, and why
+## What I prioritized, and why
 
-Ranked by what would most damage trust if it were wrong.
+I ranked the work by what would hurt trust the most if it went wrong.
 
-1. **Access control the server actually enforces.** A sharing feature that only hides buttons is worse than none.
-2. **Never silently losing someone's writing.** Serialized autosave, a visible save state, retry when offline, a version check, and history that a restore cannot destroy.
-3. **Hostile or broken input.** Bad files are normal input, so each failure has its own message, and everything imported or pasted is reduced to the document schema.
-4. **Then features, in order:** roles, version history, comments, export, presence. Each was built, tested and committed before the next began.
-5. **Polish on the main path only.** Empty, loading and error states, a distinct visual identity and a usable phone layout.
+1. **Access control that the server actually enforces.** Sharing that only hides buttons is worse than no sharing at all.
+2. **Never losing someone's writing.** Autosave that runs one save at a time, a visible save state, retries when offline, a version check, and history that a restore can't destroy.
+3. **Bad or hostile input.** Broken files are normal input. Each failure gets its own message, and everything imported or pasted is reduced to the document schema.
+4. **Then the features, in this order:** roles, version history, comments, export, presence. I finished, tested and committed each one before starting the next.
+5. **Polish on the main path.** Empty, loading and error states, a clear visual identity and a layout that works on a phone.
 
-This ordering of production patterns was suggested by the AI and reported as approved by the user through the coordinating session (see `AI_USAGE.md`).
+How I reached these decisions, including which ones the AI proposed and I approved, is in [AI_USAGE.md](AI_USAGE.md).
 
-## How each production pattern was handled
+## How each production pattern is handled
 
 ### Server-side permission checks
 
-Every `/documents/:id` route passes through `requireRole`, and `server/access.ts` is the one place a role is worked out, for HTTP and WebSocket alike. People with no access get a 404, so a document's existence isn't revealed. People with too little access get a 403. `server/test/permissions.test.ts` runs every route against every role, a stranger and an anonymous caller.
+Every `/documents/:id` route goes through `requireRole`. `server/access.ts` is the only place a role is worked out, for both HTTP and WebSocket. Someone with no access gets a 404, so they can't even tell the document exists. Someone with too little access gets a 403. `server/test/permissions.test.ts` runs every route as every role, as a stranger and as an anonymous caller.
 
-Comment and version lookups are scoped to the document in the URL, so an id from another document can't be reached through one you can access.
+Comment and version lookups are scoped to the document in the URL. You can't reach a comment or version from another document through one you have access to.
 
 ### Autosave
 
-A small state machine (`client/lib/useAutosave.ts`) with visible Saving, Saved and Save failed states. One request runs at a time and later edits follow it. Network and 5xx failures retry with backoff. Failures that retrying can't fix (conflict, lost access, signed out, rejected content) stop saving and explain why. Leaving with unsaved work warns first.
+Autosave is a small state machine (`client/lib/useAutosave.ts`) with visible Saving, Saved and Save failed states. Only one save runs at a time, and later edits follow it. Network errors and 5xx errors retry with backoff. Errors that retrying won't fix (a conflict, lost access, being signed out, rejected content) stop saving and explain why. Leaving the page with unsaved work warns first, including through Home and Sign out.
 
 ### Optimistic concurrency
 
-Each save sends the version it was based on. The check and the write run in one `BEGIN IMMEDIATE` transaction, so two saves can't both pass. A stale save returns 409 `version_conflict` (HTTP 409 means the request conflicts with the resource's current state, and the client may resolve it and resubmit). The editor then asks the person to load the other version or replace it with theirs. Renaming doesn't change the content version, so it never causes a content conflict.
+Every save sends the version it was based on. The check and the write happen in one `BEGIN IMMEDIATE` transaction, so two saves can't both pass. A stale save gets a 409 `version_conflict`, and the editor asks the person to either load the other version or replace it with theirs. Renaming doesn't change the content version, so it never causes a content conflict.
 
 ### Sanitizing imports and pastes
 
-Type and size are enforced on the server. Following OWASP's file upload guidance, the extension is allowlisted, the browser's Content-Type is ignored, and the content is checked: a `.docx` must be a real Word zip, and text must not be binary. OWASP also warns that signature checks alone aren't sufficient and that archives must be limited after decompression, so a `.docx` claiming to expand past 50 MB is refused, and everything is converted rather than stored as uploaded.
+The server checks the type and size of uploads. Following OWASP's file upload guidance, I allowlist the extension, ignore the browser's Content-Type and check the actual content: a `.docx` must be a real Word zip, and a text file must not be binary. OWASP also says signature checks alone aren't enough and that archives need a limit after decompression, so a `.docx` that claims to expand past 50 MB is refused. Uploads are always converted, never stored as they came in.
 
-`.md` goes through `marked` with raw HTML removed (except bare `u`, `s`, `em` and `strong` tags, which Foolscap's own export can write) and `.docx` through `mammoth`. Both are parsed against the schema, then pass the same validator as a normal save. Paste uses ProseMirror's schema-driven parsing, so anything the schema doesn't define is dropped.
+`.md` goes through `marked` with raw HTML removed (except bare `u`, `s`, `em` and `strong` tags, which Foolscap's own export writes). `.docx` goes through `mammoth`. Both are parsed against the schema and then go through the same validator as a normal save. Paste uses ProseMirror's schema-based parsing, so anything the schema doesn't define is dropped.
 
-**One schema, used three ways.** `shared/schema.ts` defines the document. The editor renders with it, the API validates every save against it, and the importer converts into it. Documents are stored as the editor's JSON, not HTML, so there is no HTML to sanitize on read.
+**One schema, used three ways.** `shared/schema.ts` defines the document. The editor renders with it, the API validates every save against it, and the importer converts into it. Documents are stored as the editor's JSON, not HTML, so there's no HTML to sanitize when reading.
 
 ### Version history
 
-Autosave runs constantly, so history keeps checkpoints rather than keystrokes: a snapshot when a different person takes over, or after five minutes. Automatic checkpoints are capped at 30 per document; named versions (up to 50) are never pruned. A restore first snapshots the text it replaces and then writes a new version, so it can itself be undone.
+Autosave runs all the time, so history keeps checkpoints, not keystrokes. It takes a snapshot when a different person starts editing, or after five minutes. Automatic checkpoints are capped at 30 per document. Named versions (up to 50) are never pruned. A restore first snapshots the text it's replacing and then writes a new version, so a restore can itself be undone.
 
 ### Comments
 
-Comments live outside document content. A commenter therefore needs no write access and a comment can never cause a save conflict. Each one stores its quoted text with context on either side, and is found again by matching those (`shared/anchors.ts`), choosing the best match when text repeats. If the text is rewritten the comment is kept and marked as detached. Comment bodies are rendered as plain text.
+Comments are stored separately from the document content. That means a commenter doesn't need write access, and a comment can never cause a save conflict. Each comment keeps the quoted text plus some context on both sides, and is found again by matching those (`shared/anchors.ts`), picking the best match when the same text appears twice. If the text gets rewritten, the comment is kept and marked as detached. Comment bodies are shown as plain text.
 
 ### Export
 
-Markdown is written directly from the document tree. Markdown has no underline, so underline uses `<u>`, and where CommonMark's flanking rules would stop `**` or `*` from applying, that span uses the equivalent HTML tag. Round-trip tests export and re-import each construct. PDF is generated on the server with PDFKit and bundled fonts, so output doesn't depend on the browser. Tests read the output back with `pdf.js` and check sizes, fonts, underline strokes and page flow. A roughly 1 MB document took about 0.3 seconds, during which the single process is busy, so PDF export is rate limited per person.
+Markdown is written straight from the document tree. Markdown has no underline, so underline uses `<u>`. Where CommonMark's rules would stop `**` or `*` from working, that span uses the matching HTML tag instead. Round-trip tests export each construct and import it back. PDF is generated on the server with PDFKit and bundled fonts, so it doesn't depend on the browser. Tests read the PDF back with `pdf.js` and check sizes, fonts, underline and page breaks. A roughly 1 MB document took about 0.3 seconds, and the single process is busy during that time, so PDF export is rate limited per person.
 
 ### Real-time presence
 
-`server/presence.ts` runs a WebSocket endpoint at `/api/documents/:id/live`. Cookies travel on WebSocket upgrades from any site, so the origin is checked by hand before the session and role. Messages are limited to 1 KB and validated, with per-connection rate limits and per-document and per-person connection caps. A heartbeat removes dead connections and rechecks access. Revoking someone's access closes their socket at once.
+`server/presence.ts` runs a WebSocket endpoint at `/api/documents/:id/live`. Browsers send cookies on WebSocket upgrades from any site, so I check the origin by hand before checking the session and role. Messages are limited to 1 KB and validated, with rate limits per connection and connection caps per document and per person. A heartbeat removes dead connections and rechecks access. Removing someone's access closes their socket straight away.
 
-The socket carries presence and "something changed" notices. It never carries document content, and saving never depends on it. Clients fetch changes through the normal permission-checked API, and if the socket is down they reconnect with backoff and fall back to polling every 8 seconds (30 seconds while connected, as a safety net).
+The socket only carries presence and "something changed" notices. It never carries document content, and saving never depends on it. Clients fetch changes through the normal permission-checked API. If the socket drops, they reconnect with backoff and poll every 8 seconds in the meantime (every 30 seconds while connected, as a safety net).
 
-### Why Yjs co-editing was left out
+### Why I left out Yjs co-editing
 
-Yjs was the last priority, and it was not built. Its documentation shows it would fit technically: CRDT shared types, network-agnostic providers, and a ProseMirror binding. Adding it properly would change the core rather than extend it. Saving, the version check, history and comment anchoring all assume one authoritative saved document, and the save path has the most tests in the project. Replacing that late would put the most trusted part at risk for a feature that was explicitly optional.
+Yjs was the last item on my list, and I didn't build it. It would fit technically: CRDT shared types, providers that don't care about the network, and a ProseMirror binding. But adding it properly changes the core rather than extending it. Saving, the version check, history and comment anchors all assume one saved document is the source of truth, and the save path has the most tests in the project. Replacing that late would put the most trusted part at risk for a feature that was optional.
 
-The other approaches considered:
+Other approaches I looked at:
 
-- **Central-authority step rebasing** (ProseMirror's collab module) rejects stale steps and has clients rebase. It is closest to this design and would be the natural next step.
-- **Figma's model** is server-authoritative and CRDT-inspired, with last-writer-wins per property. Figma's stated reason for avoiding operational transformation, that it was unnecessarily complex for their problem, carried weight here, but last-writer-wins per property suits design objects better than running text.
-- **Etherpad** shows the richer end of this: per-keystroke authorship with a full revision history. That is far beyond what was needed.
+- **Central-authority step rebasing** (ProseMirror's collab module) rejects out-of-date steps and has the client rebase. It's the closest to my design and would be the natural next step.
+- **Figma's model** is server-authoritative and CRDT-inspired, with last-writer-wins per property. Their reason for avoiding operational transformation, that it was more complex than their problem needed, made sense to me, but last-writer-wins per property suits design objects better than running text.
+- **Etherpad** shows the far end of this: per-keystroke authorship and full revision history. That's well beyond what this needed.
 
-**Suggestion mode** was a stretch goal and was also not built.
+I also didn't build **suggestion mode**, which was a stretch goal.
 
-## Production level: what it does and doesn't mean here
+## User interface
 
-**In place:** scrypt password hashing; random session tokens stored only as hashes; `HttpOnly`, `SameSite=Lax` cookies that are `Secure` over HTTPS; cross-site request protection (a required custom header plus an origin check, on top of `SameSite`); a Content-Security-Policy and other security headers, with HSTS in production; rate limits on failed logins, uploads and exports; Zod validation on all request input; ordered database migrations; a consistent error shape (`{ error: { code, message } }`); structured JSON logs with request ids and no document content or credentials; a health endpoint that checks the database; secrets and settings through validated environment variables; CI running lint, typecheck and all tests.
+I wanted it to feel like a finished product, not a demo. Every signed-in page has the same header: the logo, a Home button, and an account menu with your name, email and Sign out. The editor bar uses icon buttons, has a breadcrumb back to your documents, and on a phone moves Comments, History and Export into a "⋯" menu. The documents page has search, sorting, file icons, owner avatars and illustrated empty states. Downloads and deletes confirm with a small toast, and pages show grey loading placeholders instead of plain "Loading…" text. Spacing, heights and corner sizes come from one set of CSS variables so things line up. Each person keeps the same avatar colour everywhere, including their live cursor.
 
-**Not in place, and required before real use with real data:**
+## Hosting
 
-- **No load testing.** Capacity is unknown.
-- **One process, one SQLite file.** No horizontal scaling or failover. Rate limits and presence are held in memory, so they reset on restart and wouldn't work across instances. Scaling out would mean Postgres in place of `server/db.ts` and a shared bus for the presence hub.
-- **No backups or point-in-time recovery.** The database is a single file on one disk.
-- **No monitoring or alerting at scale.** Logs go to stdout and nothing watches them.
-- **No SSO, sign-up, password reset, email verification or 2FA.** Sessions don't have an admin revocation screen.
+I picked **Railway**. It builds from the Dockerfile, redeploys on every push to `main`, and supports a persistent volume, which SQLite needs. The volume is mounted at `/data`, and the service runs as a single instance. The first deploy had no volume, so data was wiped on every deploy. Adding the volume at `/data` fixed that.
+
+## What "production level" means here
+
+**In place:**
+- scrypt password hashing, and random session tokens stored only as hashes
+- `HttpOnly`, `SameSite=Lax` cookies, `Secure` over HTTPS
+- cross-site request protection (a required custom header plus an origin check, on top of `SameSite`)
+- a Content-Security-Policy and other security headers, with HSTS in production
+- rate limits on failed logins, uploads and exports
+- Zod validation on all request input
+- ordered database migrations
+- one error shape everywhere (`{ error: { code, message } }`)
+- structured JSON logs with request ids and no document content or credentials
+- a health endpoint that checks the database
+- settings through validated environment variables
+- CI running lint, typecheck and all tests
+
+**Not in place, and needed before real use with real data:**
+
+- **No load testing.** I don't know the capacity.
+- **One process, one SQLite file.** No horizontal scaling or failover. Rate limits and presence live in memory, so they reset on restart and wouldn't work across instances. Scaling out would mean Postgres in place of `server/db.ts` and a shared message bus for presence.
+- **No backups or point-in-time recovery.** The database is one file on one volume.
+- **No monitoring or alerting.** Logs go to stdout and nothing watches them.
+- **No SSO, sign-up, password reset, email verification or 2FA.** There's no admin screen for revoking sessions.
 - **PDF generation runs on the main thread.** A worker would be the fix under real load.
-- **The zip size check trusts the archive's own headers.** It stops declared zip bombs but not one that lies about its size.
-- **No virus scanning of uploads.** Files are converted and discarded, never stored or served.
-- **The Docker image and hosted WebSockets haven't been verified**, because nothing has been deployed yet.
+- **The zip size check trusts the archive's own headers.** It stops zip bombs that declare their size, but not one that lies about it.
+- **No virus scanning of uploads.** Files are converted and thrown away, never stored or served.
 
-**Lint exceptions**, each deliberate: non-null assertions (array access is strictly typed, so these state a checked invariant); control characters in regexes (those patterns exist to strip them); exhaustive effect dependencies (several effects intentionally re-run on a trigger value and use refs); and two accessibility rules on the drag-and-drop area and status text, where the ARIA pattern is intentional.
+**Lint exceptions**, each on purpose:
+- Non-null assertions: array access is strictly typed, so these state a checked invariant.
+- Control characters in regexes: those patterns exist to strip them.
+- Exhaustive effect dependencies: several effects deliberately re-run on a trigger value and use refs.
+- Two accessibility rules on the drag-and-drop area and the status text, where the ARIA pattern is intentional.
 
 ## Other decisions
 
-**SQLite through Node's built-in `node:sqlite`.** One writer and modest data fit SQLite well, and setup for reviewers is zero. The built-in driver avoids compiling a native module. The cost is a single instance and a persistent disk, which constrains hosting.
+**SQLite through Node's built-in `node:sqlite`.** One writer and modest data fit SQLite well, and reviewers have nothing to set up. The built-in driver means no native module to compile. The cost is one instance and a persistent disk, which limits hosting choices.
 
-**Left out, beyond co-editing:** sign-up and password reset (accounts aren't what's being evaluated), and images, tables and links in documents (each needs storage or UI and a safety policy; the importer reports what it dropped).
+**What I left out besides co-editing:** sign-up and password reset (accounts aren't what's being assessed), and images, tables and links in documents (each needs storage or UI plus a safety policy; the importer tells you what it dropped).
 
-## Public sources consulted
+## Public sources I used
 
-Concepts only; no code was copied from any of these.
+Concepts only. I didn't copy code from any of these.
 
-- [ProseMirror Guide](https://prosemirror.net/docs/guide/): schema content expressions, schema-driven parsing, central-authority collaboration.
+- [ProseMirror Guide](https://prosemirror.net/docs/guide/): schema content expressions, schema-based parsing, central-authority collaboration.
 - [Yjs documentation](https://docs.yjs.dev/): CRDT shared types, providers, editor bindings.
 - [How Figma's multiplayer technology works](https://www.figma.com/blog/how-figmas-multiplayer-technology-works/) (Figma blog, 2019).
 - [OWASP File Upload Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html).
 - [MDN: 409 Conflict](https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/409).
-- [Etherpad](https://github.com/ether/etherpad) (Apache 2.0) and [Outline](https://github.com/outline/outline) (BSL 1.1): read at README level for scope and licensing. No code used.
+- [Etherpad](https://github.com/ether/etherpad) (Apache 2.0) and [Outline](https://github.com/outline/outline) (BSL 1.1): I only read their READMEs for scope and licensing. No code used.
 
-The Google Drive blog post on conflict resolution in Google Docs was also opened, but its article body could not be extracted, so nothing here relies on it.
+I also opened the Google Drive blog post on conflict resolution in Google Docs, but couldn't extract its article text, so nothing here relies on it.

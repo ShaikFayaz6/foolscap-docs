@@ -1,33 +1,36 @@
 # Foolscap
 
-A full-stack document editor: write with rich text, import existing files, share pages by role, comment on text, restore earlier versions, export, and see who else is on the page.
+Foolscap is a document editor I built for this assessment. You can write with rich text, import files you already have, share a page with other people by role, comment on text, go back to earlier versions, export, and see who else is on the page.
 
-**Live demo:** _not deployed yet (see [Deploying](#deploying))._
+**Live app:** https://foolscap-docs-production.up.railway.app
 
-## What it does
+## What you can do in it
 
-- **Documents.** Create, rename, edit, reopen. Bold, italic, underline, three heading levels, bulleted and numbered lists. Changes save on their own, with a visible save state and Ctrl+S to save right away.
-- **Import.** Upload **`.txt`, `.md` or `.docx`, up to 2 MB**, and it opens as a new editable document. Other types are refused with a message saying what is supported. Images are left out and tables are flattened; the editor tells you when that happened.
-- **Sharing by role.** Each document has one owner, who can grant **Can edit**, **Can comment** or **Can view** by email, and change or remove that later. The interface adapts to the role, and the server enforces it on every request.
-- **Version history.** Automatic checkpoints, plus versions you name. Preview any of them. Restoring creates a new version, so history is never lost.
-- **Comments.** Anchored to selected text, with replies and resolve. They survive edits around them, and if the text itself is rewritten the comment stays and says so.
-- **Export.** Markdown and PDF, keeping headings, lists and inline formatting.
-- **Presence.** See who else has the page open and where their cursor is, over WebSocket. Saves, comments and role changes reach open pages immediately.
-- **Persistence.** Everything lives in SQLite and survives refreshes and server restarts.
+- **Write.** Bold, italic, underline, three heading sizes, bullet and numbered lists. It saves on its own and always shows the save state. Ctrl+S saves right away.
+- **Import.** `.txt`, `.md` or `.docx`, up to 2 MB. It opens as a new document you can edit. Any other file type is refused with a clear message. Images get left out and tables get flattened, and the editor tells you when that happens.
+- **Share by role.** The owner can give someone **Can edit**, **Can comment** or **Can view** by email, and change or remove it later. The screen changes with the role, and the server checks the role on every request.
+- **Version history.** Automatic checkpoints, plus versions you can name. You can preview any of them. Restoring creates a new version, so nothing is lost.
+- **Comments.** Select text and comment on it. Replies and resolve work. Comments stay attached when the text around them changes.
+- **Export.** Markdown or PDF, keeping headings, lists and formatting.
+- **Presence.** See who else has the page open and where their cursor is. Saves, comments and role changes show up on open pages straight away.
+- **Find things.** Search your documents by title or owner, sort them, and filter to yours or shared with you.
+- **Data that stays.** Everything is stored in SQLite and survives refreshes, restarts and redeploys.
 
 ## Try it
 
-Sign in with a seeded account from the login page. All use the password `foolscap-demo` unless `DEMO_PASSWORD` was set before the database was created.
+Sign in on the login page with one of the demo accounts. One click signs you in. They all use the password `foolscap-demo`.
 
 | Account | Starts with |
 | --- | --- |
 | `avery@foolscap.test` | Owns "Welcome to Foolscap" |
 | `blake@foolscap.test` | Can edit "Welcome to Foolscap" |
-| `casey@foolscap.test` | Nothing shared |
+| `casey@foolscap.test` | Nothing shared yet |
 
-To see sharing, comments and presence between people, use a second browser or a private window for the other account.
+To try sharing, comments and presence between people, open a second browser or a private window and sign in as someone else.
 
-| Ability | Viewer | Commenter | Editor | Owner |
+There are test files in [`samples/`](samples/README.md), with a step-by-step script for testing with all three accounts.
+
+| What they can do | Viewer | Commenter | Editor | Owner |
 | --- | :-: | :-: | :-: | :-: |
 | Read, export, read comments | Yes | Yes | Yes | Yes |
 | Comment and reply | | Yes | Yes | Yes |
@@ -38,7 +41,7 @@ To see sharing, comments and presence between people, use a second browser or a 
 
 ## Run it locally
 
-Needs **Node 24 or newer**: the server uses Node's built-in SQLite and runs TypeScript directly, so there is no server build step and no native module to compile.
+You need **Node 24 or newer**. The server uses Node's built-in SQLite and runs TypeScript directly, so there's no separate database to install and nothing to compile for the server.
 
 ```bash
 npm install
@@ -52,20 +55,20 @@ npm run build
 npm start
 ```
 
-Then open http://localhost:3000. Data is stored in `data/foolscap.db`; delete that file to start over.
+Then open http://localhost:3000. The data goes in `data/foolscap.db`. Delete that file if you want to start fresh.
 
 For development with hot reload, run `npm run dev` and open http://localhost:5173.
 
-Settings come from environment variables. For local use, copy `.env.example` to `.env`. The server refuses to start on an invalid value.
+Settings come from environment variables. For local use you can copy `.env.example` to `.env`. The server won't start if a value is invalid.
 
-| Environment variable | Default | Purpose |
+| Variable | Default | What it does |
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP port |
-| `DATABASE_PATH` | `data/foolscap.db` | SQLite file location |
+| `DATABASE_PATH` | `data/foolscap.db` | Where the SQLite file lives |
 | `LOG_LEVEL` | `info` | Log detail, from `fatal` to `trace`, or `silent` |
-| `TRUST_PROXY` | `0` | Reverse proxies in front of the app. The Docker image sets `1` |
+| `TRUST_PROXY` | `0` | Number of reverse proxies in front of the app. The Docker image sets `1` |
 | `SEED_DEMO_ACCOUNTS` | `true` | Create the demo accounts when the database is first created |
-| `DEMO_PASSWORD` | `foolscap-demo` | Password for those accounts. Has no effect on an existing database |
+| `DEMO_PASSWORD` | `foolscap-demo` | Password for those accounts. Only used when the database is created |
 
 ## Tests
 
@@ -81,9 +84,9 @@ npm run typecheck
 npm test
 ```
 
-The 204 server tests run against a real listening server: permissions per role on every route, concurrency conflicts, import sanitization, version restore, comments, export, WebSocket presence, cross-site request protection, rate limits and logging.
+`npm test` runs 204 server tests against a real running server. They cover permissions for every role on every route, save conflicts, import cleanup, version restore, comments, export, WebSocket presence, cross-site request protection, rate limits and logging.
 
-The 6 browser tests drive the main flows with several signed-in users, and include hard server kills and restarts. Install a browser for them once:
+There are also 6 browser tests that go through the main flows with several signed-in users, including killing and restarting the server. Install a browser for them once:
 
 ```bash
 npx playwright install chromium
@@ -93,47 +96,29 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-To use an installed browser instead, set `PW_CHANNEL` first. In PowerShell, for Microsoft Edge: `$env:PW_CHANNEL='msedge'`.
+To use a browser you already have instead, set `PW_CHANNEL` first. For Microsoft Edge in PowerShell: `$env:PW_CHANNEL='msedge'`.
 
-CI runs all of the above on every push (`.github/workflows/ci.yml`).
+GitHub Actions runs all of this on every push (`.github/workflows/ci.yml`).
 
 ## Deploying
 
-The repo includes a `Dockerfile`, `fly.toml` and `render.yaml`. SQLite needs a **persistent disk** mounted at `/data`, and exactly one running instance. `/api/health` is the health check.
-
-**Fly.io** (edit the app name in `fly.toml` first):
-
-```bash
-fly launch --copy-config --no-deploy
-```
-
-```bash
-fly volumes create foolscap_data --size 1 --region iad
-```
-
-```bash
-fly deploy --ha=false
-```
-
-**Railway** (uses `railway.json` and the `Dockerfile`):
+The live app runs on **Railway**, from the `Dockerfile` and `railway.json` in this repo. SQLite needs a **persistent disk** and **one running instance**, so the setup is:
 
 1. New Project → Deploy from GitHub repo → pick this repo.
-2. Before the first deploy, add a **Volume** to the service mounted at `/data`. Without it, the database is erased on every redeploy.
+2. Add a **Volume** to the service, mounted at `/data`. Without it, the database is wiped on every deploy.
 3. Under Networking, generate a public domain.
-4. Optionally set `DEMO_PASSWORD` under Variables. `PORT` is provided by Railway, and `DATABASE_PATH` and `TRUST_PROXY` come from the Docker image.
+4. Optionally set `DEMO_PASSWORD` under Variables. Railway provides `PORT`, and the Docker image sets `DATABASE_PATH` and `TRUST_PROXY`.
 
-A service with a volume runs as a single replica, which is what SQLite needs.
+Railway redeploys on every push to `main`. `/api/health` is the health check.
 
-**Render:** push the repo to GitHub, then create a Blueprint from `render.yaml`.
-
-**Any other Docker host:** build the image and mount a persistent volume at `/data`.
+The repo also has a `fly.toml` and a `render.yaml` if you'd rather use Fly.io or Render. Any Docker host works if you mount a persistent volume at `/data`.
 
 ## Known limits
 
-- Presence is live, but editing is not character-by-character co-editing. Whoever saves first wins, open pages take that save at once if they have no unsaved edits, and a real conflict is stopped and explained.
-- The demo accounts are public on purpose. There is no sign-up or password reset, so don't store anything private.
+- Presence is live, but two people can't type in the same paragraph at the same time like in Google Docs. Whoever saves first wins. Other open pages pick up that save straight away if they have no unsaved changes, and a real conflict is stopped and explained.
+- The demo accounts are public on purpose. There's no sign-up or password reset, so don't put anything private in it.
 - No images, tables or links in documents. Deleting a document is permanent.
 - A `.docx` keeps headings, bold, italic, underline and lists. Fonts, colours and page layout are dropped.
-- PDF export uses DejaVu fonts, which have no Chinese, Japanese, Korean or emoji characters. Those appear as empty boxes. Markdown export is unaffected.
+- PDF export uses DejaVu fonts, which don't have Chinese, Japanese, Korean or emoji characters. Those show as empty boxes in the PDF. Markdown export is fine.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for what was prioritized and why, and [AI_USAGE.md](AI_USAGE.md) for how AI was used.
+[ARCHITECTURE.md](ARCHITECTURE.md) explains what I prioritized and why. [AI_USAGE.md](AI_USAGE.md) explains how I used AI. [SUBMISSION.md](SUBMISSION.md) lists everything included.

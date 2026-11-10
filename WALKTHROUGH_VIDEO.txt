@@ -1,0 +1,3 @@
+Walkthrough video: [YOUR INPUT NEEDED: paste the video link here]
+
+Live app: https://foolscap-docs-production.up.railway.app
