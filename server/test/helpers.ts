@@ -2,6 +2,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { createApp } from '../app.ts';
 import { openDatabase, type Db } from '../db.ts';
+import { PresenceHub } from '../presence.ts';
 import { DEMO_PASSWORD } from '../../shared/demo.ts';
 
 export const AVERY = 'avery@foolscap.test';
@@ -74,12 +75,14 @@ export interface Harness {
   close(): Promise<void>;
 }
 
-export async function startHarness(): Promise<Harness> {
+export async function startHarness(options: { heartbeatMs?: number } = {}): Promise<Harness> {
   const db = openDatabase(':memory:', { seedWelcomeDoc: false });
+  const hub = new PresenceHub(db, options);
   const server = await new Promise<Server>((resolve) => {
-    const listening = createApp(db).listen(0, () => resolve(listening));
+    const listening = createApp(db, { live: hub }).listen(0, () => resolve(listening));
   });
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  hub.attach(server);
+  const base =`http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   const [avery, blake, casey] = [new Client(base), new Client(base), new Client(base)] as const;
   await Promise.all([avery.login(AVERY), blake.login(BLAKE), casey.login(CASEY)]);
   return {
@@ -92,6 +95,7 @@ export async function startHarness(): Promise<Harness> {
     anonymous: new Client(base),
     close: () =>
       new Promise((resolve) => {
+        hub.close();
         server.close(() => {
           db.close();
           resolve();

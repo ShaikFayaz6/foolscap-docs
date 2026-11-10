@@ -4,7 +4,10 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
 import type { CommentThread, DocumentDetail } from '../../shared/api.ts';
 import { createAnchor, resolveAnchor, type Anchor } from '../../shared/anchors.ts';
-import { commentLayer, Decoration, Layers } from '../lib/layers.ts';
+import { commentLayer, cursorLayer, Decoration, Layers } from '../lib/layers.ts';
+import { useAuth } from '../lib/auth.ts';
+import { useLive } from '../lib/useLive.ts';
+import { otherPeople, peerColor, PeopleHere } from '../components/PeopleHere.tsx';
 import { CommentsPanel, type PlacedThread } from '../components/CommentsPanel.tsx';
 import { documentExtensions } from '../../shared/schema.ts';
 import { hasRole, MAX_TITLE_LENGTH, ROLE_LABELS, type ShareRole } from '../../shared/limits.ts';
@@ -17,6 +20,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 import { HistoryDialog } from '../components/HistoryDialog.tsx';
 
 const POLL_MS = 8000;
+const LIVE_POLL_MS = 30_000;
 
 type Load =
   | { state: 'loading' }
@@ -111,6 +115,16 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
   const canEdit = hasRole(document.role, 'editor') && !lostAccess;
   const canComment = hasRole(document.role, 'commenter') && !lostAccess;
   const save = useAutosave(initial.id, initial.version, initial.updatedAt, () => latestDoc.current?.toJSON());
+  const { user } = useAuth();
+  const pollNow = useRef<() => void>(() => {});
+  const loadCommentsRef = useRef<() => void>(() => {});
+  const live = useLive(initial.id, !lostAccess, (what) => {
+    if (what === 'comments') loadCommentsRef.current();
+    else pollNow.current();
+  });
+  const sendSelection = useRef(live.sendSelection);
+  sendSelection.current = live.sendSelection;
+  const people = otherPeople(live.peers, user?.id);
 
   const editor = useEditor({
     extensions: [...documentExtensions, Placeholder.configure({ placeholder: 'Start writing…' }), Layers],
@@ -137,6 +151,15 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       latestDoc.current = updated.state.doc;
       save.markDirty();
     },
+    onSelectionUpdate: ({ editor: updated }) => {
+      const { from, to } = updated.state.selection;
+      sendSelection.current({ from, to });
+    },
+    onFocus: ({ editor: focused }) => {
+      const { from, to } = focused.state.selection;
+      sendSelection.current({ from, to });
+    },
+    onBlur: () => sendSelection.current(null),
   });
   editorRef.current = editor;
 
@@ -155,6 +178,31 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
   }, [initial.id]);
 
   useEffect(loadComments, [loadComments]);
+  loadCommentsRef.current = loadComments;
+
+  // Positions come from each person's own copy, so they are clamped and may lag a moment behind.
+  useEffect(() => {
+    if (!editor || editor.view.composing) return;
+    cursorLayer.set(editor, (doc) => {
+      const size = doc.content.size;
+      return live.peers
+        .filter((peer) => peer.userId !== user?.id && peer.selection)
+        .flatMap((peer) => {
+          const color = peerColor(peer.userId);
+          const from = Math.min(peer.selection!.from, size);
+          const to = Math.min(peer.selection!.to, size);
+          const caret = window.document.createElement('span');
+          caret.className = 'remote-caret';
+          caret.style.setProperty('--peer', color);
+          // The name is drawn with CSS, so it never becomes part of the page's text.
+          caret.dataset.name = firstName(peer.name);
+          return [
+            ...(from < to ? [Decoration.inline(from, to, { style: `background: ${color}2e` })] : []),
+            Decoration.widget(to, caret, { key: `${peer.id}:${to}:${color}`, side: -1 }),
+          ];
+        });
+    });
+  }, [editor, live.peers, user?.id, docRevision]);
 
   // Anchors are found again whenever comments change or a save settles the text.
   const placedThreads = useMemo<PlacedThread[] | null>(() => {
@@ -221,7 +269,9 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
         if (!stopped && (error as ApiRequestError).status === 404) setLostAccess(true);
       }
     };
-    const timer = setInterval(() => void poll(), POLL_MS);
+    pollNow.current = () => void poll();
+    // The socket announces changes, so polling is only the safety net while it is up.
+    const timer = setInterval(() => void poll(), live.status === 'live' ? LIVE_POLL_MS : POLL_MS);
     // Coming back to a background tab should not wait for the next tick.
     const onVisibilityChange = () => void poll();
     window.document.addEventListener('visibilitychange', onVisibilityChange);
@@ -230,7 +280,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       clearInterval(timer);
       window.document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [initial.id, lostAccess, applyRemote, loadComments, save.currentVersion, save.isIdle]);
+  }, [initial.id, lostAccess, live.status, applyRemote, loadComments, save.currentVersion, save.isIdle]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -369,6 +419,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
           }}
         />
         <div className="editor-bar-right">
+          <PeopleHere people={people} reconnecting={live.status === 'reconnecting'} />
           {canEdit && (
             <span className={`save-state save-${save.status}`} role="status" data-testid="save-state">
               {statusLabel(save.status, save.savedAt)}

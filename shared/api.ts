@@ -38,6 +38,17 @@ export interface VersionSummary {
   savedBy: string;
 }
 
+export interface LivePeer {
+  id: string;
+  userId: string;
+  name: string;
+  selection: { from: number; to: number } | null;
+}
+
+export type LiveChange = 'document' | 'comments' | 'access';
+
+export type LiveMessage = { type: 'presence'; peers: LivePeer[] } | { type: 'changed'; what: LiveChange };
+
 export interface CommentAuthor {
   id: string;
   name: string;

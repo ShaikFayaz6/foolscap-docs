@@ -184,6 +184,12 @@ label input, label select { color: var(--ink); font-size: 15px; font-weight: 400
 .prose hr { border: 0; border-top: 1px solid var(--rule); }
 .prose p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; color: #a79e87; pointer-events: none; font-style: italic; }
 
+.people-here { display: inline-flex; }
+.person { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-left: -5px; border: 2px solid var(--desk); border-radius: 50%; color: #fff; font: 600 12px/1 var(--sans); }
+.person-more { background: var(--ink-soft); font-size: 10px; }
+.live-state { color: var(--ink-soft); font-size: 13px; }
+.remote-caret { position: relative; margin: 0 -1px; border-left: 2px solid var(--peer); pointer-events: none; }
+.remote-caret::after { content: attr(data-name); position: absolute; bottom: 100%; left: -2px; padding: 0 4px; background: var(--peer); border-radius: 2px 2px 2px 0; color: #fff; font: 500 11px/16px var(--sans); white-space: nowrap; user-select: none; }
 .export-menu { position: relative; }
 .export-menu summary { list-style: none; cursor: pointer; }
 .export-menu summary::-webkit-details-marker { display: none; }

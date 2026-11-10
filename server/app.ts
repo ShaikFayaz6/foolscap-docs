@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import express, { type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import cookieParser from 'cookie-parser';
@@ -7,6 +7,8 @@ import helmet from 'helmet';
 import multer from 'multer';
 import { z } from 'zod';
 import { verifyPassword, type Db } from './db.ts';
+import { hashToken, roleFor, SESSION_COOKIE, userForToken } from './access.ts';
+import { NO_LIVE_EVENTS, type LiveEvents } from './presence.ts';
 import { ApiError } from './errors.ts';
 import { normalizeContent } from './content.ts';
 import { convertUpload } from './importer.ts';
@@ -24,7 +26,6 @@ import { EMPTY_DOC } from '../shared/schema.ts';
 import { MAX_QUOTE_LENGTH } from '../shared/anchors.ts';
 import type { CommentThread, DocumentDetail, DocumentSummary, Share, User } from '../shared/api.ts';
 
-const SESSION_COOKIE = 'foolscap_session';
 const SESSION_MS = 14 * 24 * 60 * 60 * 1000;
 
 interface DocumentRow {
@@ -78,7 +79,6 @@ const MAX_SNAPSHOTS = 30;
 const MAX_NAMED_VERSIONS = 50;
 const EMPTY_SERIALIZED = JSON.stringify(EMPTY_DOC);
 
-const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 const titleSchema = z.string().trim().max(MAX_TITLE_LENGTH, `Titles can be at most ${MAX_TITLE_LENGTH} characters.`);
 const currentUser = (res: Response) => res.locals.user as User;
 
@@ -111,7 +111,8 @@ function toSummary(row: DocumentRow, userId: string): DocumentSummary {
   };
 }
 
-export function createApp(db: Db, options: { staticDir?: string } = {}) {
+export function createApp(db: Db, options: { staticDir?: string; live?: LiveEvents } = {}) {
+  const live = options.live ?? NO_LIVE_EVENTS;
   const app = express();
   app.set('trust proxy', 1);
   app.disable('x-powered-by');
@@ -140,18 +141,9 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
   // --- Authentication -------------------------------------------------------
 
   const requireUser: RequestHandler = (req, res, next) => {
-    const token: unknown = req.cookies?.[SESSION_COOKIE];
-    const user =
-      typeof token === 'string'
-        ? (db
-            .prepare(
-              `SELECT u.id, u.email, u.name FROM sessions s JOIN users u ON u.id = s.user_id
-               WHERE s.token_hash = ? AND s.expires_at > ?`,
-            )
-            .get(hashToken(token), Date.now()) as User | undefined)
-        : undefined;
+    const user = userForToken(db, req.cookies?.[SESSION_COOKIE]);
     if (!user) throw new ApiError(401, 'not_signed_in', 'Please sign in to continue.');
-    res.locals.user = { ...user };
+    res.locals.user = user;
     next();
   };
 
@@ -205,15 +197,7 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
   const requireRole =
     (minimum: Role): RequestHandler =>
     (req, res, next) => {
-      const userId = currentUser(res).id;
-      const row = db
-        .prepare(
-          `SELECT d.owner_id, s.role AS share_role FROM documents d
-           LEFT JOIN document_shares s ON s.document_id = d.id AND s.user_id = ?
-           WHERE d.id = ?`,
-        )
-        .get(userId, String(req.params.id)) as { owner_id: string; share_role: Role | null } | undefined;
-      const role = row && (row.owner_id === userId ? 'owner' : row.share_role);
+      const role = roleFor(db, String(req.params.id), currentUser(res).id);
       if (!role) throw new ApiError(404, 'not_found', 'This document does not exist or has not been shared with you.');
       if (!hasRole(role, minimum)) {
         const messages: Partial<Record<Role, string>> = {
@@ -362,6 +346,7 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
       currentUser(res).id,
       String(req.params.id),
     );
+    live.changed(String(req.params.id), 'document');
     res.json({ title: title || 'Untitled', updatedAt: now });
   });
 
@@ -377,6 +362,7 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
       if (shouldSnapshot(id, current, userId)) takeSnapshot(id, current);
       writeContent(id, serialized, now, userId);
     });
+    live.changed(id, 'document');
     res.json({ version: body.baseVersion + 1, updatedAt: now });
   });
 
@@ -446,11 +432,13 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
       if (current.content !== EMPTY_SERIALIZED) takeSnapshot(id, current);
       writeContent(id, target.content, new Date().toISOString(), userId);
     });
+    live.changed(id, 'document');
     res.json({ document: loadDetail(id, userId) });
   });
 
   api.delete('/documents/:id', requireRole('owner'), (req, res) => {
     db.prepare('DELETE FROM documents WHERE id = ?').run(String(req.params.id));
+    live.accessChanged(String(req.params.id));
     res.status(204).end();
   });
 
@@ -464,6 +452,12 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
     prefix: z.string().max(64),
     suffix: z.string().max(64),
   });
+
+  /** Every comment write answers with the full list and tells everyone else to refresh theirs. */
+  function sendComments(res: Response, documentId: string, status = 200): void {
+    live.changed(documentId, 'comments');
+    res.status(status).json({ comments: listComments(documentId) });
+  }
 
   function listComments(documentId: string): CommentThread[] {
     const threads = db
@@ -521,7 +515,7 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
       `INSERT INTO comments (document_id, author_id, body, quote, prefix, suffix, from_pos, to_pos, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, currentUser(res).id, body, anchor.quote, anchor.prefix, anchor.suffix, anchor.from, anchor.to, new Date().toISOString());
-    res.status(201).json({ comments: listComments(id) });
+    sendComments(res, id, 201);
   });
 
   api.post('/documents/:id/comments/:commentId/replies', requireRole('commenter'), (req, res) => {
@@ -535,7 +529,7 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
       body,
       new Date().toISOString(),
     );
-    res.status(201).json({ comments: listComments(id) });
+    sendComments(res, id, 201);
   });
 
   api.patch('/documents/:id/comments/:commentId', requireRole('commenter'), (req, res) => {
@@ -547,7 +541,7 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
       throw new ApiError(403, 'forbidden', 'Only the person who wrote this comment, an editor or the owner can resolve it.');
     }
     db.prepare('UPDATE comments SET resolved = ? WHERE id = ?').run(resolved ? 1 : 0, Number(commentId));
-    res.json({ comments: listComments(id) });
+    sendComments(res, id);
   });
 
   api.delete('/documents/:id/comments/:commentId', requireRole('commenter'), (req, res) => {
@@ -558,7 +552,7 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
       throw new ApiError(403, 'forbidden', 'Only the person who wrote this comment or the owner can delete it.');
     }
     db.prepare('DELETE FROM comments WHERE id = ?').run(Number(commentId));
-    res.json({ comments: listComments(id) });
+    sendComments(res, id);
   });
 
   // --- Sharing --------------------------------------------------------------
@@ -590,12 +584,14 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
       `INSERT INTO document_shares (document_id, user_id, role, created_at) VALUES (?, ?, ?, ?)
        ON CONFLICT (document_id, user_id) DO UPDATE SET role = excluded.role`,
     ).run(id, target.id, role, new Date().toISOString());
+    live.accessChanged(id);
     res.json({ shares: listShares(id) });
   });
 
   api.delete('/documents/:id/shares/:userId', requireRole('owner'), (req, res) => {
     const id = String(req.params.id);
     db.prepare('DELETE FROM document_shares WHERE document_id = ? AND user_id = ?').run(id, String(req.params.userId));
+    live.accessChanged(id);
     res.json({ shares: listShares(id) });
   });
 

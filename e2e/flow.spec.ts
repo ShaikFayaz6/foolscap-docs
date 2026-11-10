@@ -162,15 +162,16 @@ test('create, format, share, import, conflict and restart', async ({ browser }) 
   });
 
   await test.step('a stale save shows a conflict and can be resolved', async () => {
+    // Avery types first: an idle page would simply take the other save live, with no conflict.
+    await editorOf(avery).click();
+    await avery.keyboard.press('Control+End');
+    await avery.keyboard.type(' mine');
+
     const current = await (await blake.request.get(`/api/documents/${documentId}`)).json();
     const saved = await blake.request.put(`/api/documents/${documentId}/content`, {
       data: { content: current.document.content, baseVersion: current.document.version },
     });
     expect(saved.status()).toBe(200);
-
-    await editorOf(avery).click();
-    await avery.keyboard.press('Control+End');
-    await avery.keyboard.type(' mine');
     await expect(avery.getByText('Someone saved a newer version')).toBeVisible();
     await avery.getByRole('button', { name: 'Replace with mine' }).click();
     await expectSaved(avery);
@@ -351,6 +352,59 @@ test('exports what is on screen, including edits not yet autosaved', async ({ br
   const pdf = await exportAs('PDF (.pdf)');
   expect(pdf.suggestedFilename()).toBe('Export me.pdf');
   expect(readFileSync(await pdf.path()).subarray(0, 5).toString()).toBe('%PDF-');
+});
+
+test('presence: shows who is here, live updates, and recovers after the server restarts', async ({ browser }) => {
+  const avery = await signIn(browser, 'Avery');
+  const blake = await signIn(browser, 'Blake');
+  await avery.getByRole('button', { name: 'New document' }).click();
+  await expect(avery).toHaveURL(/\/d\//);
+  const url = avery.url();
+  const id = url.split('/d/')[1]!;
+  await editorOf(avery).click();
+  await avery.keyboard.type('Shared words');
+  await expectSaved(avery);
+  await avery.request.put(`/api/documents/${id}/shares`, { data: { email: 'blake@foolscap.test', role: 'editor' } });
+
+  const blakeIsHere = avery.getByRole('status', { name: /Also here: Blake/ });
+  await expect(blakeIsHere).toHaveCount(0);
+  await blake.goto(url);
+  await expect(blakeIsHere).toBeVisible();
+  await expect(blake.getByRole('status', { name: /Also here: Avery/ })).toBeVisible();
+
+  await test.step('a remote cursor appears where the other person is', async () => {
+    await editorOf(blake).click();
+    await blake.keyboard.press('Control+End');
+    await expect(editorOf(avery).locator('.remote-caret')).toHaveAttribute('data-name', 'Blake');
+    await avery.getByRole('textbox', { name: 'Document title' }).click();
+    await expect(editorOf(blake).locator('.remote-caret')).toHaveCount(0);
+  });
+
+  await test.step('a save appears for the other person well before the poll', async () => {
+    await blake.keyboard.type(' from Blake');
+    await expectSaved(blake);
+    await expect(editorOf(avery)).toContainText('Shared words from Blake', { timeout: 4000 });
+  });
+
+  await test.step('a role change reaches the open page at once', async () => {
+    await avery.request.put(`/api/documents/${id}/shares`, { data: { email: 'blake@foolscap.test', role: 'viewer' } });
+    await expect(editorOf(blake)).toHaveAttribute('contenteditable', 'false', { timeout: 4000 });
+  });
+
+  await test.step('leaving removes the person', async () => {
+    await blake.goto('/');
+    await expect(blakeIsHere).toHaveCount(0);
+    await blake.goto(url);
+    await expect(blakeIsHere).toBeVisible();
+  });
+
+  await test.step('losing the server shows Reconnecting, and presence returns with it', async () => {
+    await killServer();
+    await expect(avery.getByText('Reconnecting…')).toBeVisible();
+    await startServer();
+    await expect(blakeIsHere).toBeVisible({ timeout: 40_000 });
+    await expect(avery.getByText('Reconnecting…')).toHaveCount(0);
+  });
 });
 
 test('pasted and stored markup stays inert', async ({ browser }) => {
