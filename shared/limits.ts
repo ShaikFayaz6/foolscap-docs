@@ -5,6 +5,16 @@ export const MAX_TITLE_LENGTH = 200;
 export const IMPORT_EXTENSIONS = ['.txt', '.md', '.docx'] as const;
 export const IMPORT_RULES_TEXT = '.txt, .md or .docx, up to 2 MB';
 
-export const ROLES = ['viewer', 'editor', 'owner'] as const;
+export const ROLES = ['viewer', 'commenter', 'editor', 'owner'] as const;
 export type Role = (typeof ROLES)[number];
-export type ShareRole = Exclude<Role, 'owner'>;
+export const SHARE_ROLES = ['viewer', 'commenter', 'editor'] as const;
+export type ShareRole = (typeof SHARE_ROLES)[number];
+
+export const hasRole = (role: Role, minimum: Role) => ROLES.indexOf(role) >= ROLES.indexOf(minimum);
+
+/** How each shared role is described in the interface. */
+export const ROLE_LABELS: Record<ShareRole, string> = {
+  editor: 'Can edit',
+  commenter: 'Can comment',
+  viewer: 'Can view',
+};

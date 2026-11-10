@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Share } from '../../shared/api.ts';
 import { DEMO_ACCOUNTS } from '../../shared/demo.ts';
-import type { ShareRole } from '../../shared/limits.ts';
+import { ROLE_LABELS, type ShareRole } from '../../shared/limits.ts';
 import { api, ApiRequestError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.ts';
+
+const roleOptions = (['editor', 'commenter', 'viewer'] as const).map((value) => (
+  <option key={value} value={value}>
+    {ROLE_LABELS[value]}
+  </option>
+));
 
 interface Props {
   documentId: string;
@@ -61,8 +67,7 @@ export function ShareDialog({ documentId, title, onClose }: Props) {
         <label>
           Access
           <select value={role} onChange={(e) => setRole(e.target.value as ShareRole)}>
-            <option value="editor">Can edit</option>
-            <option value="viewer">Can view</option>
+            {roleOptions}
           </select>
         </label>
         <button className="button button-primary" type="submit" disabled={busy}>
@@ -108,8 +113,7 @@ export function ShareDialog({ documentId, title, onClose }: Props) {
                 disabled={busy}
                 onChange={(e) => run(() => api.share(documentId, share.email, e.target.value as ShareRole))}
               >
-                <option value="editor">Can edit</option>
-                <option value="viewer">Can view</option>
+                {roleOptions}
               </select>
               <button
                 className="link-button"

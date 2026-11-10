@@ -9,7 +9,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 
 type Filter = 'all' | 'mine' | 'shared';
 
-const ROLE_WORDS = { editor: 'can edit', viewer: 'can view' } as const;
+const ROLE_WORDS = { editor: 'can edit', commenter: 'can comment', viewer: 'can view' } as const;
 
 function clientSideProblem(file: File): string | null {
   const lower = file.name.toLowerCase();

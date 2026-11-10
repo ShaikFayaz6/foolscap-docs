@@ -4,7 +4,7 @@ import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
 import type { DocumentDetail } from '../../shared/api.ts';
 import { documentExtensions } from '../../shared/schema.ts';
-import { MAX_TITLE_LENGTH } from '../../shared/limits.ts';
+import { hasRole, MAX_TITLE_LENGTH, ROLE_LABELS, type ShareRole } from '../../shared/limits.ts';
 import { api, ApiRequestError } from '../lib/api.ts';
 import { clockTime, firstName } from '../lib/format.ts';
 import { useAutosave, type SaveStatus } from '../lib/useAutosave.ts';
@@ -97,13 +97,13 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
     if (location.state) navigate(location.pathname, { replace: true, state: null });
   }, [location.state, location.pathname, navigate]);
 
-  const canEdit = document.role !== 'viewer' && !lostAccess;
+  const canEdit = hasRole(document.role, 'editor') && !lostAccess;
   const save = useAutosave(initial.id, initial.version, initial.updatedAt, () => latestDoc.current?.toJSON());
 
   const editor = useEditor({
     extensions: [...documentExtensions, Placeholder.configure({ placeholder: 'Start writing…' })],
     content: initial.content,
-    editable: initial.role !== 'viewer',
+    editable: hasRole(initial.role, 'editor'),
     autofocus: importNotice?.fresh ? 'start' : false,
     editorProps: { attributes: { class: 'prose', 'aria-label': 'Document text' } },
     onCreate: ({ editor: created }) => {
@@ -278,7 +278,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
             </>
           ) : (
             <span className="tag tag-shared">
-              From {firstName(document.owner.name)} · {document.role === 'editor' ? 'can edit' : 'view only'}
+              From {firstName(document.owner.name)} · {ROLE_LABELS[document.role as ShareRole].toLowerCase()}
             </span>
           )}
         </div>
@@ -331,7 +331,13 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       <div className={`desk ${canEdit ? '' : 'is-readonly'}`}>
         {canEdit && editor && <ToolRail editor={editor} />}
         <main className="pad">
-          {!canEdit && !lostAccess && <p className="readonly-note">You can read this page, but only {firstName(document.owner.name)} or an editor can change it.</p>}
+          {!canEdit && !lostAccess && (
+            <p className="readonly-note">
+              {document.role === 'commenter'
+                ? 'You can read and comment on this page. Select text to leave a comment.'
+                : `You can read this page, but only ${firstName(document.owner.name)} or an editor can change it.`}
+            </p>
+          )}
           <EditorContent editor={editor} />
         </main>
       </div>

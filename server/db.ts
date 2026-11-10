@@ -51,6 +51,24 @@ const HISTORY_SCHEMA = `
   CREATE INDEX document_versions_document ON document_versions(document_id, id);
 `;
 
+// SQLite cannot alter a CHECK constraint, so the table is rebuilt.
+const COMMENTER_ROLE = `
+  CREATE TABLE document_shares_new (
+    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role        TEXT NOT NULL CHECK (role IN ('viewer', 'commenter', 'editor')),
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (document_id, user_id)
+  );
+  INSERT INTO document_shares_new SELECT document_id, user_id, role, created_at FROM document_shares;
+  DROP TABLE document_shares;
+  ALTER TABLE document_shares_new RENAME TO document_shares;
+  CREATE INDEX document_shares_user ON document_shares(user_id);
+`;
+
+/** Applied in order, once each. PRAGMA user_version records how many have run. Never edit a shipped entry. */
+export const MIGRATIONS = [SCHEMA, HISTORY_SCHEMA, COMMENTER_ROLE];
+
 export function hashPassword(password: string): string {
   const salt = randomBytes(16);
   return `${salt.toString('hex')}:${scryptSync(password, salt, 32).toString('hex')}`;
@@ -92,11 +110,10 @@ export function openDatabase(path: string, options: { seedWelcomeDoc?: boolean }
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;');
 
   const { user_version: schemaVersion } = db.prepare('PRAGMA user_version').get() as { user_version: number };
-  if (schemaVersion === 0) {
-    db.exec(`BEGIN; ${SCHEMA} PRAGMA user_version = 1; COMMIT;`);
-    seed(db, options.seedWelcomeDoc ?? true);
+  for (let index = schemaVersion; index < MIGRATIONS.length; index += 1) {
+    db.exec(`BEGIN; ${MIGRATIONS[index]} PRAGMA user_version = ${index + 1}; COMMIT;`);
   }
-  if (schemaVersion < 2) db.exec(`BEGIN; ${HISTORY_SCHEMA} PRAGMA user_version = 2; COMMIT;`);
+  if (schemaVersion === 0) seed(db, options.seedWelcomeDoc ?? true);
   db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now());
   return db;
 }

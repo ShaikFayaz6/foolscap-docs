@@ -10,7 +10,15 @@ import { verifyPassword, type Db } from './db.ts';
 import { ApiError } from './errors.ts';
 import { normalizeContent } from './content.ts';
 import { convertUpload } from './importer.ts';
-import { IMPORT_RULES_TEXT, MAX_TITLE_LENGTH, MAX_UPLOAD_BYTES, ROLES, type Role } from '../shared/limits.ts';
+import {
+  hasRole,
+  IMPORT_RULES_TEXT,
+  MAX_TITLE_LENGTH,
+  MAX_UPLOAD_BYTES,
+  SHARE_ROLES,
+  type Role,
+  type ShareRole,
+} from '../shared/limits.ts';
 import { EMPTY_DOC } from '../shared/schema.ts';
 import type { DocumentDetail, DocumentSummary, Share, User } from '../shared/api.ts';
 
@@ -28,7 +36,7 @@ interface DocumentRow {
   owner_email: string;
   updated_by_name: string;
   share_count: number;
-  share_role: 'viewer' | 'editor' | null;
+  share_role: ShareRole | null;
 }
 
 interface StoredContent {
@@ -179,13 +187,15 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
         .get(userId, String(req.params.id)) as { owner_id: string; share_role: Role | null } | undefined;
       const role = row && (row.owner_id === userId ? 'owner' : row.share_role);
       if (!role) throw new ApiError(404, 'not_found', 'This document does not exist or has not been shared with you.');
-      if (ROLES.indexOf(role) < ROLES.indexOf(minimum)) {
-        throw new ApiError(
-          403,
-          'forbidden',
-          minimum === 'owner' ? 'Only the owner can do that.' : 'You have view-only access to this document.',
-        );
+      if (!hasRole(role, minimum)) {
+        const messages: Partial<Record<Role, string>> = {
+          owner: 'Only the owner can do that.',
+          editor: 'Your access does not include editing this document.',
+          commenter: 'You have view-only access to this document.',
+        };
+        throw new ApiError(403, 'forbidden', messages[minimum] ?? 'You do not have access to do that.');
       }
+      res.locals.role = role;
       next();
     };
 
@@ -397,7 +407,7 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
 
   api.put('/documents/:id/shares', requireRole('owner'), (req, res) => {
     const { email, role } = parse(
-      z.object({ email: z.string().trim().min(1, 'Enter an email address.'), role: z.enum(['viewer', 'editor']) }),
+      z.object({ email: z.string().trim().min(1, 'Enter an email address.').max(254), role: z.enum(SHARE_ROLES) }),
       req.body,
     );
     const id = String(req.params.id);
