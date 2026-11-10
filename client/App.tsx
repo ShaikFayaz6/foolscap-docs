@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import type { User } from '../shared/api.ts';
 import { api, setUnauthorizedHandler } from './lib/api.ts';
 import { AuthContext } from './lib/auth.ts';
+import { ToastProvider } from './lib/ui.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { LibraryPage } from './pages/LibraryPage.tsx';
 import { EditorPage } from './pages/EditorPage.tsx';
@@ -22,9 +23,18 @@ export function App() {
     api.me().then(setUser, () => setUser(null));
   }, []);
 
-  if (user === undefined) return <div className="center-state" aria-busy="true">Opening…</div>;
+  if (user === undefined) {
+    return (
+      <div className="center-state splash" aria-busy="true">
+        <span className="wordmark">Foolscap</span>
+        <span className="splash-bar" aria-hidden="true" />
+        <span className="visually-hidden">Opening…</span>
+      </div>
+    );
+  }
 
   return (
+    <ToastProvider>
     <AuthContext.Provider value={{ user, setUser }}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -47,5 +57,6 @@ export function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthContext.Provider>
+    </ToastProvider>
   );
 }

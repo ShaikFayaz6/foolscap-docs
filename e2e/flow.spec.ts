@@ -198,7 +198,10 @@ test('create, format, share, import, conflict and restart', async ({ browser }) 
   await test.step('imports .md and .docx, and rejects other types', async () => {
     // The shared header is on the editor page too.
     await expect(avery.locator('.masthead').getByText(/Avery/)).toBeVisible();
+    await avery.getByRole('button', { name: /^Account: Avery/ }).click();
     await expect(avery.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    await avery.keyboard.press('Escape');
+    await expect(avery.getByRole('button', { name: 'Sign out' })).toBeHidden();
     await avery.getByRole('link', { name: 'Home', exact: true }).click();
     await expect(avery.getByText('.txt, .md or .docx, up to 2 MB', { exact: false }).first()).toBeVisible();
     const input = avery.getByTestId('import-input');
@@ -336,6 +339,7 @@ test('exports what is on screen, including edits not yet autosaved', async ({ br
   await page.getByRole('button', { name: 'New document' }).click();
   await expect(page).toHaveURL(/\/d\//);
   await page.getByRole('textbox', { name: 'Document title' }).fill('Export me');
+  await expect(page).toHaveTitle('Export me · Foolscap');
   await editorOf(page).click();
   await page.getByRole('button', { name: 'Heading 1' }).click();
   await page.keyboard.type('Plan');

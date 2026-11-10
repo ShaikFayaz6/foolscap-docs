@@ -19,6 +19,8 @@ import { ShareDialog } from '../components/ShareDialog.tsx';
 import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 import { HistoryDialog } from '../components/HistoryDialog.tsx';
 import { AppHeader } from '../components/AppHeader.tsx';
+import { Icon } from '../components/Icon.tsx';
+import { usePageTitle, usePopover, useToast } from '../lib/ui.tsx';
 
 const POLL_MS = 8000;
 const LIVE_POLL_MS = 30_000;
@@ -41,14 +43,14 @@ export function EditorPage() {
   }, [id]);
 
   useEffect(fetchDocument, [fetchDocument]);
+  usePageTitle(load.state === 'ready' ? undefined : load.state === 'loading' ? 'Loading' : load.notFound ? 'Not found' : "Couldn't load");
 
   if (load.state === 'loading') {
     return (
-      <div className="page-with-header">
+      <div className="page-with-header" aria-busy="true">
         <AppHeader />
-        <div className="center-state" aria-busy="true">
-          Finding that page…
-        </div>
+        <span className="visually-hidden">Finding that page…</span>
+        <EditorSkeleton />
       </div>
     );
   }
@@ -74,6 +76,92 @@ export function EditorPage() {
     );
   }
   return <DocumentEditor key={load.document.id} initial={load.document} />;
+}
+
+const EXPORT_FORMATS = [
+  ['markdown', 'Markdown (.md)'],
+  ['pdf', 'PDF (.pdf)'],
+] as const;
+
+type ExportFormat = (typeof EXPORT_FORMATS)[number][0];
+
+/** On narrow screens, the secondary editor actions live behind a "more" button. */
+function MoreMenu({
+  commentCount,
+  canEdit,
+  onComments,
+  onHistory,
+  onExport,
+}: {
+  commentCount: number;
+  canEdit: boolean;
+  onComments: () => void;
+  onHistory: () => void;
+  onExport: (format: ExportFormat) => void;
+}) {
+  const { open, setOpen, ref } = usePopover();
+  const run = (action: () => void) => () => {
+    setOpen(false);
+    action();
+  };
+  return (
+    <div className="more-menu" ref={ref}>
+      <button
+        type="button"
+        className="bar-button bar-button-square"
+        aria-label="More actions"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <Icon name="more" />
+        {commentCount > 0 && <span className="dot-badge" aria-hidden="true" />}
+      </button>
+      {open && (
+        <div className="popover more-panel">
+          <div className="popover-items">
+            <button type="button" className="popover-item" onClick={run(onComments)}>
+              <Icon name="comment" /> Comments
+              {commentCount > 0 && <span className="count-badge">{commentCount}</span>}
+            </button>
+            {canEdit && (
+              <button type="button" className="popover-item" onClick={run(onHistory)}>
+                <Icon name="history" /> History
+              </button>
+            )}
+          </div>
+          <div className="popover-items">
+            <p className="popover-label">Export</p>
+            {EXPORT_FORMATS.map(([format, label]) => (
+              <button type="button" key={format} className="popover-item" onClick={run(() => onExport(format))}>
+                <Icon name="download" /> {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Grey placeholder shapes in the layout of the editor, shown while a document loads. */
+function EditorSkeleton() {
+  return (
+    <div className="skeleton-editor" aria-hidden="true">
+      <div className="skeleton-bar">
+        <span className="skeleton skeleton-line" style={{ width: 90 }} />
+        <span className="skeleton skeleton-title" />
+        <span className="skeleton skeleton-pill" style={{ marginLeft: 'auto' }} />
+        <span className="skeleton skeleton-pill" />
+      </div>
+      <div className="skeleton-pad">
+        <span className="skeleton skeleton-heading" />
+        {['96%', '88%', '92%', '64%', 'gap', '90%', '84%', '72%'].map((width) =>
+          width === 'gap' ? <br key={width} /> : <span key={width} className="skeleton skeleton-line" style={{ width }} />,
+        )}
+      </div>
+    </div>
+  );
 }
 
 function statusLabel(status: SaveStatus, savedAt: string): string {
@@ -130,6 +218,8 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
   const canComment = hasRole(document.role, 'commenter') && !lostAccess;
   const save = useAutosave(initial.id, initial.version, initial.updatedAt, () => latestDoc.current?.toJSON());
   const { user } = useAuth();
+  const toast = useToast();
+  usePageTitle(title.trim() || 'Untitled');
   const pollNow = useRef<() => void>(() => {});
   const loadCommentsRef = useRef<() => void>(() => {});
   const live = useLive(initial.id, !lostAccess, (what) => {
@@ -202,7 +292,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       return live.peers
         .filter((peer) => peer.userId !== user?.id && peer.selection)
         .flatMap((peer) => {
-          const color = peerColor(peer.userId);
+          const color = peerColor(peer.name);
           const from = Math.min(peer.selection!.from, size);
           const to = Math.min(peer.selection!.to, size);
           const caret = window.document.createElement('span');
@@ -376,6 +466,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       link.download = `${title.trim() || 'Untitled'}.${format === 'pdf' ? 'pdf' : 'md'}`;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      toast(`Downloaded ${link.download}`);
     } catch (error) {
       setExportError((error as ApiRequestError).message);
     }
@@ -412,6 +503,19 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
     <div className="editor-page">
       <AppHeader guard={(go) => void leave(go)} />
       <header className="editor-bar">
+        <div className="editor-title">
+          <nav className="breadcrumb" aria-label="Breadcrumb">
+            <Link
+              to="/"
+              onClick={(event) => {
+                event.preventDefault();
+                void leave(() => navigate('/'));
+              }}
+            >
+              {isOwner ? 'Your pile' : 'Shared with you'}
+            </Link>
+            <Icon name="chevronRight" size={14} />
+          </nav>
         <input
           className="title-input"
           aria-label="Document title"
@@ -430,6 +534,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
             }
           }}
         />
+        </div>
         <div className="editor-bar-right">
           <PeopleHere people={people} reconnecting={live.status === 'reconnecting'} />
           {canEdit && (
@@ -437,40 +542,54 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
               {statusLabel(save.status, save.savedAt)}
             </span>
           )}
-          <button type="button" className="link-button" aria-expanded={commentsOpen} onClick={() => setCommentsOpen((open) => !open)}>
-            Comments{openThreadCount > 0 ? ` · ${openThreadCount}` : ''}
-          </button>
-          {canEdit && (
-            <button type="button" className="link-button" onClick={() => setHistoryOpen(true)}>
-              History
+          <div className="bar-actions">
+            <button type="button" className="bar-button" aria-expanded={commentsOpen} onClick={() => setCommentsOpen((open) => !open)}>
+              <Icon name="comment" />
+              Comments
+              {openThreadCount > 0 && <span className="count-badge">{openThreadCount}</span>}
             </button>
-          )}
-          <details className="export-menu" ref={exportMenu}>
-            <summary className="link-button">Export</summary>
-            <div className="export-options">
-              {(
-                [
-                  ['markdown', 'Markdown (.md)'],
-                  ['pdf', 'PDF (.pdf)'],
-                ] as const
-              ).map(([format, label]) => (
-                <button type="button"
-                  key={format}
-                  className="link-button"
-                  onClick={() => {
-                    exportMenu.current?.removeAttribute('open');
-                    void exportAs(format);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </details>
+            {canEdit && (
+              <button type="button" className="bar-button" onClick={() => setHistoryOpen(true)}>
+                <Icon name="history" />
+                History
+              </button>
+            )}
+            <details className="export-menu" ref={exportMenu}>
+              <summary className="bar-button">
+                <Icon name="download" />
+                Export
+                <Icon name="chevronDown" size={14} className="bar-chevron" />
+              </summary>
+              <div className="popover export-options">
+                {EXPORT_FORMATS.map(([format, label]) => (
+                  <button
+                    type="button"
+                    key={format}
+                    className="popover-item"
+                    onClick={() => {
+                      exportMenu.current?.removeAttribute('open');
+                      void exportAs(format);
+                    }}
+                  >
+                    <Icon name="file" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </details>
+          </div>
+          <MoreMenu
+            commentCount={openThreadCount}
+            canEdit={canEdit}
+            onComments={() => setCommentsOpen((open) => !open)}
+            onHistory={() => setHistoryOpen(true)}
+            onExport={(format) => void exportAs(format)}
+          />
           {isOwner ? (
             <>
               <span className="tag tag-owned">Yours</span>
-              <button type="button" className="button button-primary" onClick={() => setSharing(true)}>
+              <button type="button" className="button button-primary button-icon" onClick={() => setSharing(true)}>
+                <Icon name="share" />
                 Share{document.shareCount > 0 ? ` · ${document.shareCount}` : ''}
               </button>
             </>

@@ -4,9 +4,10 @@ import { firstName } from '../lib/format.ts';
 const COLORS = ['#7a3b8f', '#1f7a6d', '#b4541a', '#2f5fa8', '#a12f5a', '#5c6b1e'];
 const MAX_SHOWN = 4;
 
-export function peerColor(userId: string): string {
+/** A stable colour per person. Keyed by name so the same person matches on every screen. */
+export function peerColor(key: string): string {
   let hash = 0;
-  for (const char of userId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return COLORS[hash % COLORS.length]!;
 }
 
@@ -33,7 +34,7 @@ export function PeopleHere({ people, reconnecting }: { people: LivePeer[]; recon
   return (
     <span className="people-here" role="status" aria-label={`Also here: ${names}`} title={`Also here: ${names}`}>
       {people.slice(0, MAX_SHOWN).map((person) => (
-        <span key={person.userId} className="person" style={{ background: peerColor(person.userId) }} aria-hidden="true">
+        <span key={person.userId} className="person" style={{ background: peerColor(person.name) }} aria-hidden="true">
           {firstName(person.name).charAt(0)}
         </span>
       ))}

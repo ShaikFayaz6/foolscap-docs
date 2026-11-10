@@ -3,6 +3,47 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import type { AppConfig } from '../../shared/api.ts';
 import { api, type ApiRequestError } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.ts';
+import { initials, usePageTitle } from '../lib/ui.tsx';
+import { Icon } from '../components/Icon.tsx';
+import { peerColor } from '../components/PeopleHere.tsx';
+
+/** A drawn, simplified preview of the editor: a page with a comment and two people on it. */
+function PreviewArt() {
+  return (
+    <div className="login-preview" aria-hidden="true">
+      <div className="preview-bar">
+        <span className="preview-dot" />
+        <span className="preview-dot" />
+        <span className="preview-dot" />
+        <span className="preview-people">
+          <span className="avatar avatar-small" style={{ background: '#1f7a6d' }}>
+            B
+          </span>
+          <span className="avatar avatar-small" style={{ background: '#7a3b8f' }}>
+            C
+          </span>
+        </span>
+      </div>
+      <div className="preview-body">
+        <div className="preview-page">
+          <span className="preview-heading" />
+          <span className="preview-line" style={{ width: '92%' }} />
+          <span className="preview-line" style={{ width: '84%' }}>
+            <span className="preview-highlight" />
+          </span>
+          <span className="preview-line" style={{ width: '88%' }} />
+          <span className="preview-line" style={{ width: '56%' }} />
+          <span className="preview-caret" />
+        </div>
+        <div className="preview-comment">
+          <span className="preview-line" style={{ width: '70%' }} />
+          <span className="preview-line" style={{ width: '90%' }} />
+          <span className="preview-line" style={{ width: '50%' }} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function LoginPage() {
   const { user, setUser } = useAuth();
@@ -13,6 +54,7 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [demo, setDemo] = useState<AppConfig['demo']>(null);
+  usePageTitle('Sign in');
 
   useEffect(() => {
     api.config().then(
@@ -47,9 +89,28 @@ export function LoginPage() {
       <section className="login-pitch">
         <p className="wordmark wordmark-large">Foolscap</p>
         <p className="login-tagline">Plain pages, kept and passed around.</p>
+        <p className="login-lede">A calm place to write with other people. Import what you have, share it by role, and never lose a word.</p>
+        <ul className="login-features">
+          <li className="login-feature">
+            <Icon name="share" /> Share as editor, commenter or viewer
+          </li>
+          <li className="login-feature">
+            <Icon name="comment" /> Comments that stay with the text
+          </li>
+          <li className="login-feature">
+            <Icon name="history" /> Every version kept, restore any time
+          </li>
+          <li className="login-feature">
+            <Icon name="download" /> Import Word and Markdown, export PDF
+          </li>
+        </ul>
+        <PreviewArt />
       </section>
       <section className="login-card" aria-labelledby="login-heading">
-        <h1 id="login-heading">Sign in</h1>
+        <div>
+          <h1 id="login-heading">Sign in</h1>
+          <p className="login-sub">Welcome back. Pick up where you left off.</p>
+        </div>
         <form onSubmit={submit}>
           <label>
             Email
@@ -71,21 +132,27 @@ export function LoginPage() {
             </p>
           )}
           <button className="button button-primary" type="submit" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
+            {busy ? 'Signing inâ€¦' : 'Sign in'}
           </button>
         </form>
         {demo && (
         <div className="demo-accounts">
-          <h2>Demo accounts</h2>
+          <h2>Try a demo account</h2>
           <p>
-            All use the password <code>{demo.password}</code>. Open a second window to try sharing between people.
+            One click signs you in. All use the password <code>{demo.password}</code>. Open a private window as someone else to try sharing.
           </p>
           <ul>
             {demo.accounts.map((account) => (
               <li key={account.email}>
                 <button className="demo-account" type="button" disabled={busy} onClick={() => signIn(account.email, demo.password)}>
-                  <span>{account.name}</span>
-                  <small>{account.email}</small>
+                  <span className="avatar" style={{ background: peerColor(account.name) }} aria-hidden="true">
+                    {initials(account.name)}
+                  </span>
+                  <span className="demo-account-who">
+                    <span>{account.name}</span>
+                    <small>{account.email}</small>
+                  </span>
+                  <Icon name="chevronRight" className="demo-account-go" />
                 </button>
               </li>
             ))}
