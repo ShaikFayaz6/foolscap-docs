@@ -68,10 +68,16 @@ label input, label select { color: var(--ink); font-size: 15px; font-weight: 400
 .masthead { display: flex; justify-content: space-between; align-items: center; padding: 16px 28px; border-bottom: 1px solid var(--rule); }
 .masthead-user { display: flex; align-items: center; gap: 14px; font-size: 14px; min-width: 0; }
 .masthead-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.masthead-nav { display: flex; align-items: center; gap: 20px; }
+.masthead-nav { display: flex; align-items: center; gap: 14px; }
 .masthead .wordmark { text-decoration: none; }
-.home-link { color: var(--ink-soft); font-size: 14px; font-weight: 500; text-decoration: none; white-space: nowrap; }
-.home-link:hover { color: var(--accent); }
+.masthead-divider { width: 1px; height: 22px; background: var(--rule); }
+.home-link { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px 0 11px; border: 1px solid var(--rule); border-radius: 999px; background: var(--pad); color: var(--ink); font-size: 14px; font-weight: 500; line-height: 1; text-decoration: none; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
+.home-link svg { flex-shrink: 0; color: var(--ink-soft); transition: color 120ms ease; }
+.home-link:hover { border-color: var(--accent); color: var(--accent); }
+.home-link:hover svg { color: var(--accent); }
+.home-link:active { background: var(--desk-deep); }
+.home-link.active { border-color: transparent; background: var(--accent-wash); color: var(--accent-deep); }
+.home-link.active svg { color: var(--accent); }
 .page-with-header { min-height: 100%; display: flex; flex-direction: column; }
 .page-with-header .center-state { flex: 1; }
 .editor-page .masthead { padding-top: 10px; padding-bottom: 10px; }
@@ -264,5 +270,11 @@ label input, label select { color: var(--ink); font-size: 15px; font-weight: 400
 
 @media (max-width: 760px) {
   .editor-bar-right { flex-wrap: wrap; row-gap: 6px; flex: 1 1 100%; min-width: 0; margin-left: 0; }
-  .masthead-nav { gap: 14px; }
+  .masthead { gap: 12px; }
+  .masthead-nav { gap: 10px; flex-shrink: 0; }
+  .masthead-divider { display: none; }
+  .home-link { width: 34px; padding: 0; justify-content: center; }
+  .home-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .masthead-user { gap: 10px; }
+  .masthead-user .link-button { white-space: nowrap; }
 }

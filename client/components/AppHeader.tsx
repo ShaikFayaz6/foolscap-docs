@@ -1,5 +1,5 @@
 import type { MouseEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.ts';
 import { useAuth } from '../lib/auth.ts';
 
@@ -30,9 +30,14 @@ export function AppHeader({ guard }: { guard?: (go: () => void) => void }) {
         <Link to="/" className="wordmark" onClick={goHome}>
           Foolscap
         </Link>
-        <Link to="/" className="home-link" onClick={goHome}>
-          <span aria-hidden="true">⌂</span> Home
-        </Link>
+        <span className="masthead-divider" aria-hidden="true" />
+        <NavLink to="/" end className="home-link" onClick={goHome}>
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 9.2 10 3.5l7 5.7" />
+            <path d="M5 7.8V16h3.6v-4.4h2.8V16H15V7.8" />
+          </svg>
+          <span className="home-label">Home</span>
+        </NavLink>
       </nav>
       <div className="masthead-user">
         <span className="masthead-name" title={user?.email}>
