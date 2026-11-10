@@ -1,5 +1,6 @@
 import type { DocJson } from './schema.ts';
 import type { Role, ShareRole } from './limits.ts';
+import type { Anchor } from './anchors.ts';
 
 export interface User {
   id: string;
@@ -35,6 +36,28 @@ export interface VersionSummary {
   name: string | null;
   savedAt: string;
   savedBy: string;
+}
+
+export interface CommentAuthor {
+  id: string;
+  name: string;
+}
+
+export interface CommentReply {
+  id: number;
+  author: CommentAuthor;
+  body: string;
+  createdAt: string;
+}
+
+export interface CommentThread {
+  id: number;
+  author: CommentAuthor;
+  body: string;
+  anchor: Anchor;
+  resolved: boolean;
+  createdAt: string;
+  replies: CommentReply[];
 }
 
 export interface SaveResult {

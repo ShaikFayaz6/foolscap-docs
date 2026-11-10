@@ -256,6 +256,76 @@ test('create, format, share, import, conflict and restart', async ({ browser }) 
   });
 });
 
+test('comments: anchored threads, replies and resolve across two users and roles', async ({ browser }) => {
+  const owner = await signIn(browser, 'Avery');
+  const commenter = await signIn(browser, 'Blake');
+
+  await owner.getByRole('button', { name: 'New document' }).click();
+  await expect(owner).toHaveURL(/\/d\//);
+  const url = owner.url();
+  const documentId = url.split('/d/')[1]!;
+  await editorOf(owner).click();
+  await owner.keyboard.type('Quarterly results improved sharply');
+  await expectSaved(owner);
+
+  const share = async (role: string) => {
+    const response = await owner.request.put(`/api/documents/${documentId}/shares`, { data: { email: 'blake@foolscap.test', role } });
+    expect(response.status()).toBe(200);
+  };
+  await share('commenter');
+
+  await commenter.goto(url);
+  await expect(editorOf(commenter)).toHaveAttribute('contenteditable', 'false');
+  await expect(commenter.getByRole('button', { name: 'Bold' })).toHaveCount(0);
+  const commentTool = commenter.getByRole('button', { name: 'Comment on selected text' });
+  await expect(commentTool).toBeDisabled();
+
+  await editorOf(commenter).getByText('Quarterly results improved sharply').dblclick({ position: { x: 90, y: 10 } });
+  await expect(commentTool).toBeEnabled();
+  await commentTool.click();
+  await commenter.getByRole('textbox', { name: 'Add a comment' }).fill('Is this audited?');
+  await commenter.getByRole('button', { name: 'Comment', exact: true }).click();
+  await expect(editorOf(commenter).locator('.comment-mark')).toHaveText('results');
+  await expect(commenter.getByText('Is this audited?')).toBeVisible();
+
+  await owner.reload();
+  await expect(editorOf(owner).locator('.comment-mark')).toHaveText('results');
+  await editorOf(owner).locator('.comment-mark').click();
+  await expect(owner.getByText('Is this audited?')).toBeVisible();
+  await owner.getByRole('textbox', { name: 'Reply' }).fill('Yes, last week');
+  await owner.getByRole('button', { name: 'Reply', exact: true }).click();
+
+  await commenter.reload();
+  await commenter.getByRole('button', { name: /^Comments/ }).click();
+  await expect(commenter.getByText('Yes, last week')).toBeVisible();
+
+  await test.step('the anchor survives editing before it, and saves never conflict with comments', async () => {
+    await editorOf(owner).press('Control+Home');
+    await owner.keyboard.type('Update: ');
+    await expectSaved(owner);
+    await owner.reload();
+    await expect(editorOf(owner).locator('.comment-mark')).toHaveText('results');
+  });
+
+  await test.step('a viewer can read comments but gets no way to write', async () => {
+    await share('viewer');
+    await commenter.reload();
+    await commenter.getByRole('button', { name: /^Comments/ }).click();
+    await expect(commenter.getByText('Is this audited?')).toBeVisible();
+    await expect(commenter.getByRole('textbox', { name: 'Reply' })).toHaveCount(0);
+    await expect(commenter.getByRole('toolbar')).toHaveCount(0);
+  });
+
+  await test.step('resolving removes the highlight and hides the thread', async () => {
+    await owner.getByRole('button', { name: /^Comments/ }).click();
+    await owner.getByRole('button', { name: 'Resolve' }).click();
+    await expect(editorOf(owner).locator('.comment-mark')).toHaveCount(0);
+    await expect(owner.getByText('Is this audited?')).toHaveCount(0);
+    await owner.getByRole('button', { name: /Show resolved/ }).click();
+    await expect(owner.getByText('Is this audited?')).toBeVisible();
+  });
+});
+
 test('pasted and stored markup stays inert', async ({ browser }) => {
   const page = await signIn(browser, 'Blake');
   await page.getByRole('button', { name: 'New document' }).click();

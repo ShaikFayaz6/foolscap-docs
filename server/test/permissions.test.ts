@@ -25,6 +25,9 @@ const ROUTES: [string, Role, Call][] = [
   ['list shares', 'owner', (c, f) => c.request('GET', `/api/documents/${f.id}/shares`)],
   ['grant share', 'owner', (c, f) => c.request('PUT', `/api/documents/${f.id}/shares`, { email: 'casey@foolscap.test', role: 'viewer' })],
   ['list versions', 'editor', (c, f) => c.request('GET', `/api/documents/${f.id}/versions`)],
+  ['read comments', 'viewer', (c, f) => c.request('GET', `/api/documents/${f.id}/comments`)],
+  ['add a comment', 'commenter', (c, f) => c.request('POST', `/api/documents/${f.id}/comments`, { body: 'hi', anchor: { from: 1, to: 2, quote: 'o', prefix: '', suffix: '' } })],
+  ['reply to a comment', 'commenter', (c, f) => c.request('POST', `/api/documents/${f.id}/comments/${f.commentId}/replies`, { body: 'hi' })],
   ['name a version', 'editor', (c, f) => c.request('POST', `/api/documents/${f.id}/versions`, { name: 'Draft' })],
   ['read version', 'editor', (c, f) => c.request('GET', `/api/documents/${f.id}/versions/${f.versionId}`)],
   ['restore version', 'editor', (c, f) => c.request('POST', `/api/documents/${f.id}/versions/${f.versionId}/restore`, { baseVersion: f.version })],
@@ -45,8 +48,11 @@ describe('permissions per role', () => {
       version = (await h.avery.request('PUT', `/api/documents/${id}/content`, { content: doc(text), baseVersion: version })).body.version;
     }
     const versionId = (await h.avery.request('GET', `/api/documents/${id}/versions`)).body.versions[0].id;
+    const commentId = (
+      await h.avery.request('POST', `/api/documents/${id}/comments`, { body: 'seed', anchor: { from: 1, to: 2, quote: 't', prefix: '', suffix: '' } })
+    ).body.comments[0].id;
     if (role === 'viewer' || role === 'commenter' || role === 'editor') await h.avery.share(id, BLAKE, role);
-    return { id, version, versionId };
+    return { id, version, versionId, commentId };
   }
 
   for (const [name, minimum, call] of ROUTES) {

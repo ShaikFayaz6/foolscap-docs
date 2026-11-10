@@ -20,7 +20,8 @@ import {
   type ShareRole,
 } from '../shared/limits.ts';
 import { EMPTY_DOC } from '../shared/schema.ts';
-import type { DocumentDetail, DocumentSummary, Share, User } from '../shared/api.ts';
+import { MAX_QUOTE_LENGTH } from '../shared/anchors.ts';
+import type { CommentThread, DocumentDetail, DocumentSummary, Share, User } from '../shared/api.ts';
 
 const SESSION_COOKIE = 'foolscap_session';
 const SESSION_MS = 14 * 24 * 60 * 60 * 1000;
@@ -47,6 +48,31 @@ interface StoredContent {
 }
 
 const SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
+interface CommentRow {
+  id: number;
+  author_id: string;
+  author_name: string;
+  body: string;
+  quote: string;
+  prefix: string;
+  suffix: string;
+  from_pos: number;
+  to_pos: number;
+  resolved: number;
+  created_at: string;
+}
+
+interface ReplyRow {
+  id: number;
+  comment_id: number;
+  author_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
+const MAX_COMMENT_LENGTH = 5000;
+const MAX_COMMENTS = 500;
 const MAX_SNAPSHOTS = 30;
 const MAX_NAMED_VERSIONS = 50;
 const EMPTY_SERIALIZED = JSON.stringify(EMPTY_DOC);
@@ -407,6 +433,113 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
   api.delete('/documents/:id', requireRole('owner'), (req, res) => {
     db.prepare('DELETE FROM documents WHERE id = ?').run(String(req.params.id));
     res.status(204).end();
+  });
+
+  // --- Comments -------------------------------------------------------------
+
+  const commentBody = z.string().trim().min(1, 'Write something first.').max(MAX_COMMENT_LENGTH, `Comments can be at most ${MAX_COMMENT_LENGTH} characters.`);
+  const anchorSchema = z.object({
+    from: z.number().int().nonnegative(),
+    to: z.number().int().positive(),
+    quote: z.string().min(1).max(MAX_QUOTE_LENGTH),
+    prefix: z.string().max(64),
+    suffix: z.string().max(64),
+  });
+
+  function listComments(documentId: string): CommentThread[] {
+    const threads = db
+      .prepare(
+        `SELECT c.*, u.name AS author_name FROM comments c JOIN users u ON u.id = c.author_id
+         WHERE c.document_id = ? ORDER BY c.id`,
+      )
+      .all(documentId) as unknown as CommentRow[];
+    const replies = db
+      .prepare(
+        `SELECT r.id, r.comment_id, r.author_id, r.body, r.created_at, u.name AS author_name
+         FROM comment_replies r JOIN users u ON u.id = r.author_id
+         JOIN comments c ON c.id = r.comment_id WHERE c.document_id = ? ORDER BY r.id`,
+      )
+      .all(documentId) as unknown as ReplyRow[];
+    return threads.map((row) => ({
+      id: row.id,
+      author: { id: row.author_id, name: row.author_name },
+      body: row.body,
+      anchor: { from: row.from_pos, to: row.to_pos, quote: row.quote, prefix: row.prefix, suffix: row.suffix },
+      resolved: row.resolved === 1,
+      createdAt: row.created_at,
+      replies: replies
+        .filter((reply) => reply.comment_id === row.id)
+        .map((reply) => ({
+          id: reply.id,
+          author: { id: reply.author_id, name: reply.author_name },
+          body: reply.body,
+          createdAt: reply.created_at,
+        })),
+    }));
+  }
+
+  /** Looks a thread up within its own document, so another document's id cannot reach it. */
+  function findComment(documentId: string, commentId: string): { author_id: string } {
+    const row = /^\d+$/.test(commentId)
+      ? (db.prepare('SELECT author_id FROM comments WHERE id = ? AND document_id = ?').get(Number(commentId), documentId) as
+          | { author_id: string }
+          | undefined)
+      : undefined;
+    if (!row) throw new ApiError(404, 'comment_not_found', 'That comment no longer exists.');
+    return row;
+  }
+
+  api.get('/documents/:id/comments', requireRole('viewer'), (req, res) => {
+    res.json({ comments: listComments(String(req.params.id)) });
+  });
+
+  api.post('/documents/:id/comments', requireRole('commenter'), (req, res) => {
+    const { body, anchor } = parse(z.object({ body: commentBody, anchor: anchorSchema }), req.body);
+    const id = String(req.params.id);
+    const { n } = db.prepare('SELECT COUNT(*) n FROM comments WHERE document_id = ?').get(id) as { n: number };
+    if (n >= MAX_COMMENTS) throw new ApiError(409, 'too_many_comments', `A document can hold at most ${MAX_COMMENTS} comment threads.`);
+    db.prepare(
+      `INSERT INTO comments (document_id, author_id, body, quote, prefix, suffix, from_pos, to_pos, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(id, currentUser(res).id, body, anchor.quote, anchor.prefix, anchor.suffix, anchor.from, anchor.to, new Date().toISOString());
+    res.status(201).json({ comments: listComments(id) });
+  });
+
+  api.post('/documents/:id/comments/:commentId/replies', requireRole('commenter'), (req, res) => {
+    const { body } = parse(z.object({ body: commentBody }), req.body);
+    const id = String(req.params.id);
+    const commentId = String(req.params.commentId);
+    findComment(id, commentId);
+    db.prepare('INSERT INTO comment_replies (comment_id, author_id, body, created_at) VALUES (?, ?, ?, ?)').run(
+      Number(commentId),
+      currentUser(res).id,
+      body,
+      new Date().toISOString(),
+    );
+    res.status(201).json({ comments: listComments(id) });
+  });
+
+  api.patch('/documents/:id/comments/:commentId', requireRole('commenter'), (req, res) => {
+    const { resolved } = parse(z.object({ resolved: z.boolean() }), req.body);
+    const id = String(req.params.id);
+    const commentId = String(req.params.commentId);
+    const comment = findComment(id, commentId);
+    if (res.locals.role === 'commenter' && comment.author_id !== currentUser(res).id) {
+      throw new ApiError(403, 'forbidden', 'Only the person who wrote this comment, an editor or the owner can resolve it.');
+    }
+    db.prepare('UPDATE comments SET resolved = ? WHERE id = ?').run(resolved ? 1 : 0, Number(commentId));
+    res.json({ comments: listComments(id) });
+  });
+
+  api.delete('/documents/:id/comments/:commentId', requireRole('commenter'), (req, res) => {
+    const id = String(req.params.id);
+    const commentId = String(req.params.commentId);
+    const comment = findComment(id, commentId);
+    if (res.locals.role !== 'owner' && comment.author_id !== currentUser(res).id) {
+      throw new ApiError(403, 'forbidden', 'Only the person who wrote this comment or the owner can delete it.');
+    }
+    db.prepare('DELETE FROM comments WHERE id = ?').run(Number(commentId));
+    res.json({ comments: listComments(id) });
   });
 
   // --- Sharing --------------------------------------------------------------

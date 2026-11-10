@@ -1,5 +1,7 @@
+import type { Anchor } from '../../shared/anchors.ts';
 import type {
   ApiErrorBody,
+  CommentThread,
   DocumentDetail,
   DocumentSummary,
   ImportResult,
@@ -90,6 +92,16 @@ export const api = {
     request<{ document: DocumentDetail }>('POST', `/documents/${id}/versions/${versionId}/restore`, { baseVersion }).then(
       (r) => r.document,
     ),
+
+  listComments: (id: string) => request<{ comments: CommentThread[] }>('GET', `/documents/${id}/comments`).then((r) => r.comments),
+  addComment: (id: string, body: string, anchor: Anchor) =>
+    request<{ comments: CommentThread[] }>('POST', `/documents/${id}/comments`, { body, anchor }).then((r) => r.comments),
+  replyToComment: (id: string, commentId: number, body: string) =>
+    request<{ comments: CommentThread[] }>('POST', `/documents/${id}/comments/${commentId}/replies`, { body }).then((r) => r.comments),
+  setCommentResolved: (id: string, commentId: number, resolved: boolean) =>
+    request<{ comments: CommentThread[] }>('PATCH', `/documents/${id}/comments/${commentId}`, { resolved }).then((r) => r.comments),
+  deleteComment: (id: string, commentId: number) =>
+    request<{ comments: CommentThread[] }>('DELETE', `/documents/${id}/comments/${commentId}`).then((r) => r.comments),
 
   listShares: (id: string) => request<{ shares: Share[] }>('GET', `/documents/${id}/shares`).then((r) => r.shares),
   share: (id: string, email: string, role: ShareRole) =>

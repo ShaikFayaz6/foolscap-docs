@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import Placeholder from '@tiptap/extension-placeholder';
-import type { DocumentDetail } from '../../shared/api.ts';
+import type { CommentThread, DocumentDetail } from '../../shared/api.ts';
+import { createAnchor, resolveAnchor, type Anchor } from '../../shared/anchors.ts';
+import { commentLayer, Decoration, Layers } from '../lib/layers.ts';
+import { CommentsPanel, type PlacedThread } from '../components/CommentsPanel.tsx';
 import { documentExtensions } from '../../shared/schema.ts';
 import { hasRole, MAX_TITLE_LENGTH, ROLE_LABELS, type ShareRole } from '../../shared/limits.ts';
 import { api, ApiRequestError } from '../lib/api.ts';
@@ -80,6 +83,12 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
   const [sharing, setSharing] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [threads, setThreads] = useState<CommentThread[] | null>(null);
+  const [commentsError, setCommentsError] = useState('');
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [draftAnchor, setDraftAnchor] = useState<Anchor | null>(null);
+  const [activeComment, setActiveComment] = useState<number | null>(null);
+  const [docRevision, setDocRevision] = useState(0);
   const [lostAccess, setLostAccess] = useState(false);
   const [remoteNote, setRemoteNote] = useState('');
   const [importNotice, setImportNotice] = useState(
@@ -98,14 +107,27 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
   }, [location.state, location.pathname, navigate]);
 
   const canEdit = hasRole(document.role, 'editor') && !lostAccess;
+  const canComment = hasRole(document.role, 'commenter') && !lostAccess;
   const save = useAutosave(initial.id, initial.version, initial.updatedAt, () => latestDoc.current?.toJSON());
 
   const editor = useEditor({
-    extensions: [...documentExtensions, Placeholder.configure({ placeholder: 'Start writing…' })],
+    extensions: [...documentExtensions, Placeholder.configure({ placeholder: 'Start writing…' }), Layers],
     content: initial.content,
     editable: hasRole(initial.role, 'editor'),
     autofocus: importNotice?.fresh ? 'start' : false,
-    editorProps: { attributes: { class: 'prose', 'aria-label': 'Document text' } },
+    editorProps: {
+      attributes: { class: 'prose', 'aria-label': 'Document text' },
+      handleDOMEvents: {
+        click: (_view, event) => {
+          const mark = (event.target as HTMLElement).closest('[data-comment-id]');
+          if (mark) {
+            setActiveComment(Number(mark.getAttribute('data-comment-id')));
+            setCommentsOpen(true);
+          }
+          return false;
+        },
+      },
+    },
     onCreate: ({ editor: created }) => {
       latestDoc.current = created.state.doc;
     },
@@ -120,6 +142,46 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
     editor?.setEditable(canEdit, false);
   }, [editor, canEdit]);
 
+  const loadComments = useCallback(() => {
+    api.listComments(initial.id).then(
+      (list) => {
+        setThreads(list);
+        setCommentsError('');
+      },
+      (error: ApiRequestError) => setCommentsError(error.message),
+    );
+  }, [initial.id]);
+
+  useEffect(loadComments, [loadComments]);
+
+  // Anchors are found again whenever comments change or a save settles the text.
+  const placedThreads = useMemo<PlacedThread[] | null>(() => {
+    if (!threads || !editor) return null;
+    const placed = threads.map((thread) => {
+      const place = resolveAnchor(editor.state.doc, thread.anchor);
+      return { ...thread, detached: !place, order: place?.from ?? Number.MAX_SAFE_INTEGER };
+    });
+    return placed.sort((a, b) => a.order - b.order);
+  }, [threads, editor, docRevision, save.savedAt]);
+
+  const openThreadCount = placedThreads?.filter((thread) => !thread.resolved).length ?? 0;
+
+  useEffect(() => {
+    if (!editor || !threads) return;
+    commentLayer.set(editor, (doc) =>
+      threads.flatMap((thread) => {
+        const place = thread.resolved ? null : resolveAnchor(doc, thread.anchor);
+        if (!place) return [];
+        return [
+          Decoration.inline(place.from, place.to, {
+            class: thread.id === activeComment ? 'comment-mark is-active' : 'comment-mark',
+            'data-comment-id': String(thread.id),
+          }),
+        ];
+      }),
+    );
+  }, [editor, threads, activeComment, docRevision, save.savedAt]);
+
   const applyRemote = useCallback(
     (latest: DocumentDetail) => {
       const current = editorRef.current;
@@ -130,6 +192,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       const end = current.state.doc.content.size;
       current.commands.setTextSelection({ from: Math.min(from, end), to: Math.min(to, end) });
       save.adopt(latest.version, latest.updatedAt);
+      setDocRevision((revision) => revision + 1);
     },
     [save.adopt],
   );
@@ -143,6 +206,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
         const latest = await api.getDocument(initial.id);
         if (stopped) return;
         setDocument((current) => ({ ...current, role: latest.role, shareCount: latest.shareCount }));
+        loadComments();
         if (!titleFocused.current) {
           setTitle(latest.title);
           savedTitle.current = latest.title;
@@ -164,7 +228,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       clearInterval(timer);
       window.document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [initial.id, lostAccess, applyRemote, save.currentVersion, save.isIdle]);
+  }, [initial.id, lostAccess, applyRemote, loadComments, save.currentVersion, save.isIdle]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -210,6 +274,25 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
     const saved = await save.flush();
     if (saved || lostAccess || save.status === 'gone') navigate('/');
     else setConfirmLeave(true);
+  }
+
+  function startComment() {
+    if (!editor) return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) return;
+    const anchor = createAnchor(editor.state.doc, from, to);
+    if (!anchor) return;
+    setDraftAnchor(anchor);
+    setCommentsOpen(true);
+  }
+
+  function selectThread(thread: PlacedThread) {
+    setActiveComment(thread.id);
+    if (!editor || thread.detached) return;
+    const place = resolveAnchor(editor.state.doc, thread.anchor);
+    if (!place) return;
+    const { node } = editor.view.domAtPos(place.from);
+    (node instanceof Element ? node : node.parentElement)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
   async function nameVersion(name: string) {
@@ -269,6 +352,9 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
               {statusLabel(save.status, save.savedAt)}
             </span>
           )}
+          <button className="link-button" aria-expanded={commentsOpen} onClick={() => setCommentsOpen((open) => !open)}>
+            Comments{openThreadCount > 0 ? ` · ${openThreadCount}` : ''}
+          </button>
           {canEdit && (
             <button className="link-button" onClick={() => setHistoryOpen(true)}>
               History
@@ -334,7 +420,7 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       )}
 
       <div className={`desk ${canEdit ? '' : 'is-readonly'}`}>
-        {canEdit && editor && <ToolRail editor={editor} />}
+        {canComment && editor && <ToolRail editor={editor} canEdit={canEdit} canComment={canComment} onComment={startComment} />}
         <main className="pad">
           {!canEdit && !lostAccess && (
             <p className="readonly-note">
@@ -345,6 +431,25 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
           )}
           <EditorContent editor={editor} />
         </main>
+        {commentsOpen && (
+          <CommentsPanel
+            threads={placedThreads}
+            role={lostAccess ? 'viewer' : document.role}
+            loadError={commentsError}
+            draft={draftAnchor}
+            activeId={activeComment}
+            onCancelDraft={() => setDraftAnchor(null)}
+            onPost={async (body, anchor) => {
+              setThreads(await api.addComment(initial.id, body, anchor));
+              setDraftAnchor(null);
+            }}
+            onReply={async (commentId, body) => setThreads(await api.replyToComment(initial.id, commentId, body))}
+            onResolve={async (commentId, resolved) => setThreads(await api.setCommentResolved(initial.id, commentId, resolved))}
+            onDelete={async (commentId) => setThreads(await api.deleteComment(initial.id, commentId))}
+            onSelect={selectThread}
+            onClose={() => setCommentsOpen(false)}
+          />
+        )}
       </div>
 
       {historyOpen && (

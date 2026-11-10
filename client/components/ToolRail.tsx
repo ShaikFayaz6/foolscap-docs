@@ -22,6 +22,7 @@ const ICONS = {
       <path d="M2.5 3.5 4 3v4M2.5 12.5c.3-.9 2.3-.9 2.2.4 0 .9-2.3 1.9-2.3 3.1h2.5" strokeWidth="1.2" />
     </>,
   ),
+  comment: icon(<path d="M3 4h14v10H9l-4 3v-3H3z" />),
   undo: icon(<path d="M7 4 3 8l4 4M3 8h9a4.5 4.5 0 0 1 0 9H8" />),
   redo: icon(<path d="m13 4 4 4-4 4M17 8H8a4.5 4.5 0 0 0 0 9h4" />),
 };
@@ -53,10 +54,32 @@ function Tool({ label, shortcut, active, disabled, onRun, children }: ToolProps)
   );
 }
 
-export function ToolRail({ editor }: { editor: Editor }) {
+interface RailState {
+  body: boolean;
+  h1: boolean;
+  h2: boolean;
+  h3: boolean;
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  bullets: boolean;
+  numbers: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+interface RailProps {
+  editor: Editor;
+  canEdit: boolean;
+  canComment: boolean;
+  onComment: () => void;
+}
+
+export function ToolRail({ editor, canEdit, canComment, onComment }: RailProps) {
   const state = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
+      hasSelection: !e.state.selection.empty,
       body: e.isActive('paragraph'),
       h1: e.isActive('heading', { level: 1 }),
       h2: e.isActive('heading', { level: 2 }),
@@ -70,10 +93,25 @@ export function ToolRail({ editor }: { editor: Editor }) {
       canRedo: e.can().redo(),
     }),
   });
-  const chain = () => editor.chain().focus();
 
   return (
-    <div className="tool-rail" role="toolbar" aria-label="Formatting">
+    <div className="tool-rail" role="toolbar" aria-label={canEdit ? 'Formatting' : 'Comment tools'}>
+      {canComment && (
+        <div className="tool-group">
+          <Tool label="Comment on selected text" disabled={!state.hasSelection} onRun={onComment}>
+            {ICONS.comment}
+          </Tool>
+        </div>
+      )}
+      {canEdit && <FormattingTools editor={editor} state={state} />}
+    </div>
+  );
+}
+
+function FormattingTools({ editor, state }: { editor: Editor; state: RailState }) {
+  const chain = () => editor.chain().focus();
+  return (
+    <>
       <div className="tool-group">
         <Tool label="Body text" active={state.body} onRun={() => chain().setParagraph().run()}>
           <span className="tool-glyph tool-serif">Aa</span>
@@ -115,6 +153,6 @@ export function ToolRail({ editor }: { editor: Editor }) {
           {ICONS.redo}
         </Tool>
       </div>
-    </div>
+    </>
   );
 }

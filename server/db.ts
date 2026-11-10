@@ -68,8 +68,33 @@ const COMMENTER_ROLE = `
 
 const NAMED_VERSIONS = 'ALTER TABLE document_versions ADD COLUMN name TEXT;';
 
+const COMMENTS = `
+  CREATE TABLE comments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    author_id   TEXT NOT NULL REFERENCES users(id),
+    body        TEXT NOT NULL,
+    quote       TEXT NOT NULL,
+    prefix      TEXT NOT NULL,
+    suffix      TEXT NOT NULL,
+    from_pos    INTEGER NOT NULL,
+    to_pos      INTEGER NOT NULL,
+    resolved    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+  );
+  CREATE INDEX comments_document ON comments(document_id);
+  CREATE TABLE comment_replies (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    comment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+    author_id  TEXT NOT NULL REFERENCES users(id),
+    body       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX comment_replies_comment ON comment_replies(comment_id);
+`;
+
 /** Applied in order, once each. PRAGMA user_version records how many have run. Never edit a shipped entry. */
-export const MIGRATIONS = [SCHEMA, HISTORY_SCHEMA, COMMENTER_ROLE, NAMED_VERSIONS];
+export const MIGRATIONS = [SCHEMA, HISTORY_SCHEMA, COMMENTER_ROLE, NAMED_VERSIONS, COMMENTS];
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16);

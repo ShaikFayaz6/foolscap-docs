@@ -184,6 +184,34 @@ label input, label select { color: var(--ink); font-size: 15px; font-weight: 400
 .prose hr { border: 0; border-top: 1px solid var(--rule); }
 .prose p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; color: #a79e87; pointer-events: none; font-style: italic; }
 
+.comment-mark { background: #f8e394; border-bottom: 2px solid #d9a92b; cursor: pointer; }
+.comment-mark.is-active { background: #f4c95d; }
+.button-small { min-height: 30px; padding: 3px 10px; font-size: 13px; }
+.comments-panel { position: sticky; top: 76px; flex: 0 0 320px; max-height: calc(100vh - 92px); overflow-y: auto; display: grid; gap: 10px; align-content: start; padding: 0 2px 16px; font-size: 14px; }
+.comments-head { display: flex; justify-content: space-between; align-items: baseline; }
+.comments-head h2 { font: 500 20px/1.2 var(--display); }
+.comments-empty { color: var(--ink-soft); }
+.thread-list { display: grid; gap: 10px; }
+.thread { display: grid; gap: 6px; padding: 10px 12px; background: var(--pad); border: 1px solid var(--rule); border-radius: 3px; }
+.thread.is-active { border-color: var(--ink); }
+.thread.is-resolved { opacity: 0.7; }
+.thread-quote { margin: 0; padding-left: 8px; border-left: 3px solid #d9a92b; color: var(--ink-soft); font: italic 14px/1.4 var(--serif); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.thread-quote-button { padding: 0; background: none; border: 0; text-align: left; cursor: pointer; }
+.thread-detached { font-size: 12px; color: var(--accent-deep); font-weight: 500; }
+.thread-byline { font-size: 12px; color: var(--ink-soft); }
+.thread-byline strong { color: var(--ink); font-weight: 600; }
+.thread-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.reply { display: grid; gap: 2px; padding-left: 10px; border-left: 1px solid var(--rule); }
+.composer { display: grid; gap: 6px; }
+.composer textarea { width: 100%; resize: vertical; padding: 6px 8px; background: #fffdf4; border: 1px solid var(--rule); border-radius: 3px; font: inherit; color: inherit; }
+.composer-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.thread-actions { display: flex; gap: 12px; }
+.tool-comment { font-size: 11px; font-weight: 600; }
+
+@media (max-width: 1240px) {
+  .comments-panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(360px, 100vw); max-height: none; padding: 16px; background: var(--desk); box-shadow: -2px 0 0 var(--rule); }
+}
+
 @media (max-width: 760px) {
   .login { grid-template-columns: 1fr; }
   .login-pitch { padding: 32px 20px 32px 52px; }
