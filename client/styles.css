@@ -184,6 +184,10 @@ label input, label select { color: var(--ink); font-size: 15px; font-weight: 400
 .prose hr { border: 0; border-top: 1px solid var(--rule); }
 .prose p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; color: #a79e87; pointer-events: none; font-style: italic; }
 
+.export-menu { position: relative; }
+.export-menu summary { list-style: none; cursor: pointer; }
+.export-menu summary::-webkit-details-marker { display: none; }
+.export-options { position: absolute; top: calc(100% + 6px); right: 0; z-index: 15; display: grid; gap: 8px; justify-items: start; padding: 10px 14px; background: var(--pad); border: 1px solid var(--rule); border-radius: 3px; white-space: nowrap; }
 .comment-mark { background: #f8e394; border-bottom: 2px solid #d9a92b; cursor: pointer; }
 .comment-mark.is-active { background: #f4c95d; }
 .button-small { min-height: 30px; padding: 3px 10px; font-size: 13px; }

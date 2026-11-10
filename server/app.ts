@@ -10,6 +10,7 @@ import { verifyPassword, type Db } from './db.ts';
 import { ApiError } from './errors.ts';
 import { normalizeContent } from './content.ts';
 import { convertUpload } from './importer.ts';
+import { toMarkdown, toPdf, type DocNode } from './exporter.ts';
 import {
   hasRole,
   IMPORT_RULES_TEXT,
@@ -377,6 +378,24 @@ export function createApp(db: Db, options: { staticDir?: string } = {}) {
       writeContent(id, serialized, now, userId);
     });
     res.json({ version: body.baseVersion + 1, updatedAt: now });
+  });
+
+  // --- Export ---------------------------------------------------------------
+
+  api.get('/documents/:id/export', requireRole('viewer'), async (req, res) => {
+    const { format } = parse(z.object({ format: z.enum(['markdown', 'pdf'], 'Choose markdown or pdf.') }), req.query);
+    const row = db.prepare('SELECT title, content FROM documents WHERE id = ?').get(String(req.params.id)) as {
+      title: string;
+      content: string;
+    };
+    const content = JSON.parse(row.content) as DocNode;
+    const filename = row.title.replace(/[\\/:*?"<>|\u0000-\u001f\s]+/g, ' ').trim() || 'Untitled';
+    if (format === 'pdf') {
+      const pdf = await toPdf(content, row.title);
+      res.attachment(`${filename}.pdf`).type('application/pdf').send(pdf);
+    } else {
+      res.attachment(`${filename}.md`).type('text/markdown; charset=utf-8').send(toMarkdown(content));
+    }
   });
 
   // --- Version history ------------------------------------------------------

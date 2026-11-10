@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import JSZip from 'jszip';
@@ -324,6 +324,33 @@ test('comments: anchored threads, replies and resolve across two users and roles
     await owner.getByRole('button', { name: /Show resolved/ }).click();
     await expect(owner.getByText('Is this audited?')).toBeVisible();
   });
+});
+
+test('exports what is on screen, including edits not yet autosaved', async ({ browser }) => {
+  const page = await signIn(browser, 'Avery');
+  await page.getByRole('button', { name: 'New document' }).click();
+  await expect(page).toHaveURL(/\/d\//);
+  await page.getByRole('textbox', { name: 'Document title' }).fill('Export me');
+  await editorOf(page).click();
+  await page.getByRole('button', { name: 'Heading 1' }).click();
+  await page.keyboard.type('Plan');
+  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'Bold' }).click();
+  await page.keyboard.type('Ship it');
+
+  const exportAs = async (label: string) => {
+    await page.getByText('Export', { exact: true }).click();
+    const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: label }).click()]);
+    return download;
+  };
+
+  const markdown = await exportAs('Markdown (.md)');
+  expect(markdown.suggestedFilename()).toBe('Export me.md');
+  expect(readFileSync(await markdown.path(), 'utf8')).toBe('# Plan\n\n**Ship it**\n');
+
+  const pdf = await exportAs('PDF (.pdf)');
+  expect(pdf.suggestedFilename()).toBe('Export me.pdf');
+  expect(readFileSync(await pdf.path()).subarray(0, 5).toString()).toBe('%PDF-');
 });
 
 test('pasted and stored markup stays inert', async ({ browser }) => {

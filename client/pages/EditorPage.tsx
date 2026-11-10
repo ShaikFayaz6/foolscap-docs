@@ -89,6 +89,8 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
   const [draftAnchor, setDraftAnchor] = useState<Anchor | null>(null);
   const [activeComment, setActiveComment] = useState<number | null>(null);
   const [docRevision, setDocRevision] = useState(0);
+  const [exportError, setExportError] = useState('');
+  const exportMenu = useRef<HTMLDetailsElement>(null);
   const [lostAccess, setLostAccess] = useState(false);
   const [remoteNote, setRemoteNote] = useState('');
   const [importNotice, setImportNotice] = useState(
@@ -295,6 +297,26 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
     (node instanceof Element ? node : node.parentElement)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
+  async function exportAs(format: 'markdown' | 'pdf') {
+    setExportError('');
+    // The server exports what is saved, so what's on screen has to be saved first.
+    if (canEdit && !(await save.flush())) {
+      setExportError('Your latest changes could not be saved, so nothing was exported.');
+      return;
+    }
+    try {
+      const blob = await api.exportDocument(initial.id, format);
+      const url = URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = `${title.trim() || 'Untitled'}.${format === 'pdf' ? 'pdf' : 'md'}`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (error) {
+      setExportError((error as ApiRequestError).message);
+    }
+  }
+
   async function nameVersion(name: string) {
     if (!(await save.flush())) throw new Error('Your latest changes could not be saved, so no version was created.');
     return api.nameVersion(initial.id, name);
@@ -360,6 +382,28 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
               History
             </button>
           )}
+          <details className="export-menu" ref={exportMenu}>
+            <summary className="link-button">Export</summary>
+            <div className="export-options">
+              {(
+                [
+                  ['markdown', 'Markdown (.md)'],
+                  ['pdf', 'PDF (.pdf)'],
+                ] as const
+              ).map(([format, label]) => (
+                <button
+                  key={format}
+                  className="link-button"
+                  onClick={() => {
+                    exportMenu.current?.removeAttribute('open');
+                    void exportAs(format);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </details>
           {isOwner ? (
             <>
               <span className="tag tag-owned">Yours</span>
@@ -398,6 +442,14 @@ function DocumentEditor({ initial }: { initial: DocumentDetail }) {
       {titleError && (
         <div className="notice notice-error notice-bar" role="alert">
           <p>The title wasn't saved. {titleError}</p>
+        </div>
+      )}
+      {exportError && (
+        <div className="notice notice-error notice-bar" role="alert">
+          <p>The export failed. {exportError}</p>
+          <button className="link-button" onClick={() => setExportError('')}>
+            Dismiss
+          </button>
         </div>
       )}
       {remoteNote && (

@@ -103,6 +103,18 @@ export const api = {
   deleteComment: (id: string, commentId: number) =>
     request<{ comments: CommentThread[] }>('DELETE', `/documents/${id}/comments/${commentId}`).then((r) => r.comments),
 
+  async exportDocument(id: string, format: 'markdown' | 'pdf'): Promise<Blob> {
+    let response: Response;
+    try {
+      response = await fetch(`/api/documents/${id}/export?format=${format}`, { credentials: 'same-origin' });
+    } catch {
+      throw new ApiRequestError(0, 'network', "Can't reach the server. Check your connection and try again.");
+    }
+    if (response.ok) return response.blob();
+    const error = ((await response.json().catch(() => null)) as ApiErrorBody | null)?.error;
+    throw new ApiRequestError(response.status, error?.code ?? 'server_error', error?.message ?? 'The export failed. Please try again.');
+  },
+
   listShares: (id: string) => request<{ shares: Share[] }>('GET', `/documents/${id}/shares`).then((r) => r.shares),
   share: (id: string, email: string, role: ShareRole) =>
     request<{ shares: Share[] }>('PUT', `/documents/${id}/shares`, { email, role }).then((r) => r.shares),

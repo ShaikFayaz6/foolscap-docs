@@ -36,6 +36,12 @@ export class Client {
     return { status: response.status, headers: response.headers, body: text ? JSON.parse(text) : null };
   }
 
+  /** For responses that are files rather than JSON. */
+  async download(path: string) {
+    const response = await fetch(this.base + path, { headers: this.cookie ? { cookie: this.cookie } : {} });
+    return { status: response.status, headers: response.headers, data: Buffer.from(await response.arrayBuffer()) };
+  }
+
   async login(email: string, password = DEMO_PASSWORD) {
     const result = await this.request('POST', '/api/auth/login', { email, password });
     this.cookie = result.headers.get('set-cookie')?.split(';')[0] ?? '';

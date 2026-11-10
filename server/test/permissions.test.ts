@@ -25,6 +25,8 @@ const ROUTES: [string, Role, Call][] = [
   ['list shares', 'owner', (c, f) => c.request('GET', `/api/documents/${f.id}/shares`)],
   ['grant share', 'owner', (c, f) => c.request('PUT', `/api/documents/${f.id}/shares`, { email: 'casey@foolscap.test', role: 'viewer' })],
   ['list versions', 'editor', (c, f) => c.request('GET', `/api/documents/${f.id}/versions`)],
+  ['export Markdown', 'viewer', (c, f) => c.download(`/api/documents/${f.id}/export?format=markdown`)],
+  ['export PDF', 'viewer', (c, f) => c.download(`/api/documents/${f.id}/export?format=pdf`)],
   ['read comments', 'viewer', (c, f) => c.request('GET', `/api/documents/${f.id}/comments`)],
   ['add a comment', 'commenter', (c, f) => c.request('POST', `/api/documents/${f.id}/comments`, { body: 'hi', anchor: { from: 1, to: 2, quote: 'o', prefix: '', suffix: '' } })],
   ['reply to a comment', 'commenter', (c, f) => c.request('POST', `/api/documents/${f.id}/comments/${f.commentId}/replies`, { body: 'hi' })],

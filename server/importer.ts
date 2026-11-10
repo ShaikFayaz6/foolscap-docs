@@ -81,15 +81,17 @@ async function markdownToDoc(text: string): Promise<{ content: DocJson; notes: s
   let tables = 0;
   const marked = new Marked({
     gfm: true,
-    // Raw HTML in markdown never reaches the HTML parser.
-    renderer: { html: () => '' },
+    // Raw HTML in markdown never reaches the HTML parser. The exception is bare
+    // inline-format tags with no attributes, which Foolscap's own export can write.
+    renderer: { html: ({ text }) => (/^<\/?(?:u|s|em|strong)>$/i.test(text.trim()) ? text : '') },
     walkTokens(token) {
       if (token.type === 'image') images += 1;
       if (token.type === 'table') tables += 1;
     },
   });
   const html = await marked.parse(text);
-  return { content: htmlToDoc(html), notes: droppedNotes(images, tables) };
+  // Marked ends every code block with a newline that was not in the source.
+  return { content: htmlToDoc(html.replace(/\n<\/code><\/pre>/g, '</code></pre>')), notes: droppedNotes(images, tables) };
 }
 
 async function assertSafeDocx(buffer: Buffer): Promise<void> {
