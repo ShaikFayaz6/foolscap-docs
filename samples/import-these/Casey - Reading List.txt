@@ -1,0 +1,7 @@
+Reading list for new starters
+
+The Elements of Style
+Don't Make Me Think
+The Design of Everyday Things
+
+Blank lines start a new paragraph. A single line break, like the ones in the list above, stays inside the same paragraph.

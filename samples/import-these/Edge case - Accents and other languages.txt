@@ -1,0 +1,13 @@
+Accents and other scripts
+
+French: café, crème brûlée, Noël
+German: Grüße aus München, Straße
+Spanish: ¿Dónde está la biblioteca? ¡Olé!
+Greek: Καλημέρα κόσμε
+Russian: Привет, мир
+
+Japanese: こんにちは世界
+Chinese: 你好，世界
+Emoji: 🎉 ✅ 📄
+
+The first lines should look right everywhere. The Japanese, Chinese and emoji lines show correctly in the editor and in Markdown export, but appear as empty boxes in PDF export, which is a known limit.

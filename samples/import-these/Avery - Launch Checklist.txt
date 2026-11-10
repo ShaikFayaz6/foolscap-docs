@@ -1,0 +1,14 @@
+Launch checklist
+
+Before launch:
+- Volume attached at /data
+- Demo accounts tested by Avery, Blake and Casey
+- PDF export checked on a long document
+
+On launch day:
+1. Post on the blog
+2. Email the beta waitlist
+3. Watch the health check
+
+After launch:
+Collect feedback for one week, then plan version 3.
